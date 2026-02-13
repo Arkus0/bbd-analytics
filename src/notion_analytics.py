@@ -189,7 +189,7 @@ def build_analytics_blocks(df: pd.DataFrame) -> list[dict]:
         (" | Semana actual: ", False),
         (str(current_week), True),
         (" | Inicio programa: ", False),
-        (PROGRAM_START.strftime("%d %b %Y"), True),
+        (pd.Timestamp(PROGRAM_START).strftime("%d %b %Y"), True),
     ], "📅"))
     blocks.append(divider())
 
