@@ -15,13 +15,13 @@ NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
 
 # ── Notion IDs ───────────────────────────────────────────────────────
 NOTION_BBD_LOGBOOK_DB = os.environ.get(
-    "NOTION_BBD_LOGBOOK_DB", "1de4d50e-f986-4595-a5d4-225463906de7"
+    "NOTION_BBD_LOGBOOK_DB", "ac92ba6b-bc18-464f-9f2b-2a7f82e6c443"
 )
 NOTION_ANALYTICS_PAGE = os.environ.get(
     "NOTION_ANALYTICS_PAGE", "306cbc49-9cfe-81b0-8aed-ce82d40289f6"
 )
 NOTION_SEGUIMIENTO_DB = os.environ.get(
-    "NOTION_SEGUIMIENTO_DB", "d5b662b8-a68a-4ed0-9237-8540cc3c2d47"
+    "NOTION_SEGUIMIENTO_DB", "63970d73-50f7-451b-8aed-10418a9f9c42"
 )
 
 # ── Program Config ───────────────────────────────────────────────────
