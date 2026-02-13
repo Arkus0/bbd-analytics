@@ -44,6 +44,10 @@ def run_sync(dry_run: bool = False) -> dict:
 
     if not new_ids:
         print("\n✅ Everything up to date. No new workouts to sync.")
+        if not dry_run:
+            from src.notion_analytics import update_analytics_page
+            print()
+            update_analytics_page(df)
         return {"synced": 0, "total": len(df)}
 
     new_df = df[df["hevy_id"].isin(new_ids)]
@@ -60,6 +64,12 @@ def run_sync(dry_run: bool = False) -> dict:
         print("\n📤 Syncing to Notion...")
         synced = sync_to_notion(new_df, NOTION_BBD_LOGBOOK_DB)
         print(f"   ✅ Created {synced} entries in Notion")
+
+    # 5. Update Analytics page
+    if not dry_run:
+        from src.notion_analytics import update_analytics_page
+        print()
+        update_analytics_page(df)
 
     # Summary
     summary = global_summary(df)
