@@ -10,7 +10,7 @@ NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
 
 # ── Notion IDs ───────────────────────────────────────────────────────
 NOTION_BBD_LOGBOOK_DB = os.environ.get(
-    "NOTION_BBD_LOGBOOK_DB", "1de4d50e-f986-4595-a5d4-225463906de7"
+    "NOTION_BBD_LOGBOOK_DB", "ac92ba6bbc18464f9f2b2a7f82e6c443"
 )
 NOTION_ANALYTICS_PAGE = os.environ.get(
     "NOTION_ANALYTICS_PAGE", "306cbc49-9cfe-81b0-8aed-ce82d40289f6"
