@@ -1,0 +1,55 @@
+name: BBD Sync — Hevy → Notion
+
+on:
+  # Cron: every day at 23:30 UTC (00:30 Spain)
+  schedule:
+    - cron: '30 23 * * *'
+  
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no Notion writes)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          HEVY_API_KEY: ${{ secrets.HEVY_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_BBD_LOGBOOK_DB: ${{ secrets.NOTION_BBD_LOGBOOK_DB }}
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python -m src.sync --dry-run
+          else
+            python -m src.sync
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### 🔥 BBD Sync Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
