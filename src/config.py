@@ -1,15 +1,11 @@
 """
-BBD Analytics — Configuration (FIXED: exercise names match Hevy API)
+BBD Analytics — Configuration v3 (template_id based)
 
-Changes from original:
-  - MUSCLE_MAP: Fixed 4 exercise names to match actual Hevy names
-    - "Sentadilla Frontal (Barra)" → "Sentadilla Delantera"
-    - "Curl de Pierna Tumbado (Máquina)" → "Curl de Piernas Acostado (Máquina)"
-    - "Glute Ham Raise" → "Elevación de glúteos y femorales"
-    - "Zancada con Mancuernas" → "Zancada (Mancuerna)"
-  - KEY_LIFTS: Added Quarter Squat + fixed Sentadilla Delantera name
-  - STRENGTH_EXERCISES: New constant, all compound lifts for DOTS scoring
-  - BBD_RATIOS: Fixed Front Squat exercise name
+ALL exercise matching uses exercise_template_id from Hevy API.
+No more dependency on localized (Spanish) exercise names.
+Names are only used for display, never for lookup.
+
+Template IDs extracted from Hevy routines API 2026-02-13.
 """
 import os
 
@@ -41,55 +37,323 @@ DAY_CONFIG = {
     6: {"name": "Día 6 - Press/Pecho", "focus": "Press + Pecho + Tríceps", "color": "#a855f7"},
 }
 
-# ── Muscle Group Mapping ─────────────────────────────────────────────
-# Maps Hevy exercise names (ACTUAL names from API) → muscle group
-MUSCLE_MAP = {
-    # Day 4
-    "Encogimiento de Hombros (Barra)": "Trapecios",
-    "Remo Pendlay (Barra)": "Espalda",
-    "Remo con Mancuerna": "Espalda",
-    "Dominada": "Espalda",
-    "Remo Sentado con Cable": "Espalda",
-    # Day 1
-    "Reverse Deadlift (Bob Peoples)": "Espalda Baja",
-    "Peso Muerto (Barra)": "Espalda Baja",
-    "Sentadilla con Salto": "Piernas",
-    "Deadlift Static Hold": "Agarre",
-    "Curl de Piernas Acostado (Máquina)": "Isquios",       # FIXED (was "Curl de Pierna Tumbado")
-    "Elevación de Talones de Pie (Máquina)": "Gemelos",
-    "Elevación de Talones Sentado (Máquina)": "Gemelos",
-    "Ab Wheel": "Core",
-    "Abdominal Corto con Cable": "Core",
-    # Day 2
-    "Press Militar (Barra)": "Hombros",
-    "Press de Banca Inclinado (Barra)": "Pecho",
-    "Press de Hombros (Mancuerna)": "Hombros",
-    "Press de Banca (Barra)": "Pecho",
-    "Bradford Press": "Hombros",
-    "Straight-Arm Overhead Lateral": "Hombros",
-    "Elevación Lateral (Mancuerna)": "Hombros",
-    # Day 3
-    "Press Francés (Barra)": "Tríceps",
-    "Curl Inverso (Barra)": "Bíceps",
-    "Extensión de Tríceps en Polea": "Tríceps",
-    "Curl Concentrado (Mancuerna)": "Bíceps",
-    "Curl de Bíceps (Cable)": "Bíceps",
-    # Day 5
-    "Sentadilla Delantera": "Cuádriceps",                   # FIXED (was "Sentadilla Frontal (Barra)")
-    "Quarter Squat": "Cuádriceps",
-    "Zancada (Mancuerna)": "Piernas",                       # FIXED (was "Zancada con Mancuernas")
-    "Elevación de glúteos y femorales": "Isquios",           # FIXED (was "Glute Ham Raise")
-    "Extensión de Pierna": "Cuádriceps",
-    # Day 6
-    "Klokov Press": "Hombros",
-    "Press de Banca - Agarre Cerrado (Barra)": "Pecho",
-    "Elevación Lateral con Cable": "Hombros",
-    "Aperturas con Cable": "Pecho",
-    "Aperturas Inclinadas (Mancuerna)": "Pecho",
-    # General
-    "Swing con Pesa Rusa": "Posterior",
-    "Hang Clean": "Olímpico",
+# ═════════════════════════════════════════════════════════════════════
+# EXERCISE DATABASE — keyed by exercise_template_id
+#
+# This is the SINGLE SOURCE OF TRUTH for all exercise metadata.
+# Template IDs are stable across languages and never change.
+# The "name" field is just a fallback label (English from routines).
+# The actual display name comes from the workout data at runtime.
+# ═════════════════════════════════════════════════════════════════════
+
+EXERCISE_DB = {
+    # ── Day 1 — Deadlift + Legs ─────────────────────────────────────
+    "d2c10c97-2d54-4159-abd3-a46404710d65": {
+        "name": "Reverse Deadlift (Bob Peoples)",
+        "day": 1,
+        "muscle_group": "Espalda Baja",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 1.75, "adv": 2.5, "elite": 3.0},
+    },
+    "70D4EBBF": {
+        "name": "Jump Squat",
+        "day": 1,
+        "muscle_group": "Piernas",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "83c10d44-2992-4635-843f-fa0619eca37a": {
+        "name": "Deadlift Static Hold",
+        "day": 1,
+        "muscle_group": "Agarre",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "B8127AD1": {
+        "name": "Lying Leg Curl (Machine)",
+        "day": 1,
+        "muscle_group": "Isquios",
+        "is_key_lift": False,
+        "is_compound": True,
+        "strength_std": {"int": 0.5, "adv": 0.75, "elite": 1.0},
+    },
+    "E05C2C38": {
+        "name": "Standing Calf Raise (Machine)",
+        "day": 1,
+        "muscle_group": "Gemelos",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "99D5F10E": {
+        "name": "Ab Wheel",
+        "day": 1,
+        "muscle_group": "Core",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+
+    # ── Day 2 — Press + Shoulders ───────────────────────────────────
+    "073032BB": {
+        "name": "Standing Military Press (Barbell)",
+        "day": 2,
+        "muscle_group": "Hombros",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 0.65, "adv": 1.0, "elite": 1.25},
+        "bbd_ratio": {"label": "OHP / DL", "range": (35, 45)},
+    },
+    "50DFDFAB": {
+        "name": "Incline Bench Press (Barbell)",
+        "day": 2,
+        "muscle_group": "Pecho",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 1.0, "adv": 1.5, "elite": 1.75},
+    },
+    "6AC96645": {
+        "name": "Overhead Press (Dumbbell)",
+        "day": 2,
+        "muscle_group": "Hombros",
+        "is_key_lift": False,
+        "is_compound": True,
+    },
+    "E644F828": {
+        "name": "Bench Press - Wide Grip (Barbell)",
+        "day": 2,
+        "muscle_group": "Pecho",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 1.1, "adv": 1.5, "elite": 2.0},
+    },
+    "b2f6fd25-c32e-4686-9939-0e55d501d0d2": {
+        "name": "Bradford Press",
+        "day": 2,
+        "muscle_group": "Hombros",
+        "is_key_lift": False,
+        "is_compound": True,
+    },
+    "60c9c36b-f128-494c-bc59-d4d09e7b2c29": {
+        "name": "Straight-Arm Overhead Lateral",
+        "day": 2,
+        "muscle_group": "Hombros",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+
+    # ── Day 3 — Arms (optional) ─────────────────────────────────────
+    "875F585F": {
+        "name": "Skullcrusher (Barbell)",
+        "day": 3,
+        "muscle_group": "Tríceps",
+        "is_key_lift": False,
+        "is_compound": True,
+        "strength_std": {"int": 0.5, "adv": 0.75, "elite": 1.0},
+    },
+    "112FC6B7": {
+        "name": "Reverse Curl (Barbell)",
+        "day": 3,
+        "muscle_group": "Bíceps",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "552AB030": {
+        "name": "Single Arm Triceps Pushdown (Cable)",
+        "day": 3,
+        "muscle_group": "Tríceps",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "724CDE60": {
+        "name": "Concentration Curl",
+        "day": 3,
+        "muscle_group": "Bíceps",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "B5EFBF9C": {
+        "name": "Overhead Triceps Extension (Cable)",
+        "day": 3,
+        "muscle_group": "Tríceps",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "234897AB": {
+        "name": "Rope Cable Curl",
+        "day": 3,
+        "muscle_group": "Bíceps",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+
+    # ── Day 4 — Back + Traps ────────────────────────────────────────
+    "0B841777": {
+        "name": "Shrug (Barbell)",
+        "day": 4,
+        "muscle_group": "Trapecios",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 1.0, "adv": 1.5, "elite": 2.0},
+        "bbd_ratio": {"label": "Shrug / DL", "range": (85, 100)},
+    },
+    "018ADC12": {
+        "name": "Pendlay Row (Barbell)",
+        "day": 4,
+        "muscle_group": "Espalda",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 0.75, "adv": 1.25, "elite": 1.5},
+        "bbd_ratio": {"label": "Pendlay / DL", "range": (45, 55)},
+    },
+    "F1E57334": {
+        "name": "Dumbbell Row",
+        "day": 4,
+        "muscle_group": "Espalda",
+        "is_key_lift": False,
+        "is_compound": True,
+    },
+    "1B2B1E7C": {
+        "name": "Pull Up",
+        "day": 4,
+        "muscle_group": "Espalda",
+        "is_key_lift": True,
+        "is_compound": True,
+    },
+    "F1D60854": {
+        "name": "Seated Cable Row - Bar Grip",
+        "day": 4,
+        "muscle_group": "Espalda",
+        "is_key_lift": False,
+        "is_compound": True,
+        "strength_std": {"int": 0.8, "adv": 1.2, "elite": 1.5},
+    },
+
+    # ── Day 5 — Legs ────────────────────────────────────────────────
+    "5046D0A9": {
+        "name": "Front Squat",
+        "day": 5,
+        "muscle_group": "Cuádriceps",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 1.25, "adv": 1.75, "elite": 2.25},
+        "bbd_ratio": {"label": "Front Squat / DL", "range": (55, 70)},
+    },
+    "c7949429-2829-4898-9cbc-5e16bb7aa893": {
+        "name": "Quarter Squat",
+        "day": 5,
+        "muscle_group": "Cuádriceps",
+        "is_key_lift": True,
+        "is_compound": True,
+    },
+    "B537D09F": {
+        "name": "Lunge (Dumbbell)",
+        "day": 5,
+        "muscle_group": "Piernas",
+        "is_key_lift": False,
+        "is_compound": True,
+    },
+    "68B83EE0": {
+        "name": "Glute Ham Raise",
+        "day": 5,
+        "muscle_group": "Isquios",
+        "is_key_lift": False,
+        "is_compound": True,
+    },
+    "06745E58": {
+        "name": "Standing Calf Raise",
+        "day": 5,
+        "muscle_group": "Gemelos",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+
+    # ── Day 6 — Press/Chest + Triceps ───────────────────────────────
+    "7bedf18e-cc6c-447f-8f65-93a7ec7cee0b": {
+        "name": "Klokov Press",
+        "day": 6,
+        "muscle_group": "Hombros",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 0.45, "adv": 0.65, "elite": 0.85},
+        "bbd_ratio": {"label": "Klokov / DL", "range": (25, 35)},
+    },
+    "35B51B87": {
+        "name": "Bench Press - Close Grip (Barbell)",
+        "day": 6,
+        "muscle_group": "Pecho",
+        "is_key_lift": True,
+        "is_compound": True,
+        "strength_std": {"int": 1.1, "adv": 1.5, "elite": 2.0},
+    },
+    "DE68C825": {
+        "name": "Single Arm Lateral Raise (Cable)",
+        "day": 6,
+        "muscle_group": "Hombros",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+    "12017185": {
+        "name": "Chest Fly (Dumbbell)",
+        "day": 6,
+        "muscle_group": "Pecho",
+        "is_key_lift": False,
+        "is_compound": False,
+    },
+
+    # ── General (all days) ──────────────────────────────────────────
+    "F8A0FCCA": {
+        "name": "Kettlebell Swing",
+        "day": 0,
+        "muscle_group": "Posterior",
+        "is_key_lift": False,
+        "is_compound": True,
+    },
 }
+
+
+# ═════════════════════════════════════════════════════════════════════
+# HELPER FUNCTIONS — derive lookups from EXERCISE_DB
+# ═════════════════════════════════════════════════════════════════════
+
+def get_muscle_group(template_id: str) -> str:
+    """Get muscle group for an exercise by template_id."""
+    entry = EXERCISE_DB.get(template_id)
+    return entry["muscle_group"] if entry else "Otro"
+
+
+def get_key_lift_ids() -> set:
+    """Get set of template_ids that are key lifts."""
+    return {tid for tid, e in EXERCISE_DB.items() if e.get("is_key_lift")}
+
+
+def get_compound_ids() -> set:
+    """Get set of template_ids that are compound movements."""
+    return {tid for tid, e in EXERCISE_DB.items() if e.get("is_compound")}
+
+
+def get_strength_standards() -> dict:
+    """Get {template_id: {int, adv, elite}} for exercises with standards."""
+    return {
+        tid: e["strength_std"]
+        for tid, e in EXERCISE_DB.items()
+        if "strength_std" in e
+    }
+
+
+def get_bbd_ratios() -> dict:
+    """Get {template_id: {label, range}} for BBD ratio exercises."""
+    return {
+        tid: e["bbd_ratio"]
+        for tid, e in EXERCISE_DB.items()
+        if e.get("bbd_ratio")
+    }
+
+
+# Deadlift reference exercise
+DEADLIFT_TEMPLATE_ID = "d2c10c97-2d54-4159-abd3-a46404710d65"
+SHRUG_TEMPLATE_ID = "0B841777"
+PULLUP_TEMPLATE_ID = "1B2B1E7C"
+
 
 MUSCLE_GROUP_COLORS = {
     "Espalda": "#3b82f6",
@@ -109,56 +373,6 @@ MUSCLE_GROUP_COLORS = {
     "Olímpico": "#0ea5e9",
 }
 
-# ── Key Lifts to Track Progression (ALL 6 DAYS) ─────────────────────
-KEY_LIFTS = [
-    # Day 1
-    "Reverse Deadlift (Bob Peoples)",
-    "Peso Muerto (Barra)",
-    # Day 2
-    "Press Militar (Barra)",
-    "Press de Banca Inclinado (Barra)",
-    "Press de Banca (Barra)",
-    # Day 4
-    "Encogimiento de Hombros (Barra)",
-    "Remo Pendlay (Barra)",
-    "Dominada",
-    # Day 5
-    "Sentadilla Delantera",                    # FIXED name
-    "Quarter Squat",                            # ADDED
-    # Day 6
-    "Klokov Press",
-    "Press de Banca - Agarre Cerrado (Barra)",
-]
-
-# ── Strength Standards — All compound lifts for DOTS scoring ─────────
-# NEW: Previously only checked KEY_LIFTS, now includes all compounds
-STRENGTH_EXERCISES = [
-    "Encogimiento de Hombros (Barra)",
-    "Remo Sentado con Cable",
-    "Remo Pendlay (Barra)",
-    "Sentadilla Delantera",
-    "Quarter Squat",
-    "Curl de Piernas Acostado (Máquina)",
-    "Reverse Deadlift (Bob Peoples)",
-    "Peso Muerto (Barra)",
-    "Press Militar (Barra)",
-    "Press de Banca Inclinado (Barra)",
-    "Press de Banca (Barra)",
-    "Klokov Press",
-    "Press de Banca - Agarre Cerrado (Barra)",
-    "Press Francés (Barra)",
-]
-
-# ── BBD Ratio Targets (exercise → %DL 1RM range) ────────────────────
-BBD_RATIOS = {
-    "Encogimiento de Hombros (Barra)": {"label": "Shrug / DL", "range": (85, 100)},
-    "Remo Pendlay (Barra)": {"label": "Pendlay / DL", "range": (45, 55)},
-    "Sentadilla Delantera": {"label": "Front Squat / DL", "range": (55, 70)},  # FIXED name
-    "Press Militar (Barra)": {"label": "OHP / DL", "range": (35, 45)},
-    "Klokov Press": {"label": "Klokov / DL", "range": (25, 35)},
-}
-
-# ── Weekly Targets (based on BBD program) ────────────────────────────
 WEEKLY_TARGETS = {
     "sessions": (5, 6),
     "total_sets": (140, 170),

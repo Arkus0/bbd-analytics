@@ -1,18 +1,8 @@
 """
-BBD Analytics — Pandas Analytics Engine v2
-All calculations, aggregations, and derived metrics.
+BBD Analytics — Pandas Analytics Engine v3 (template_id based)
 
-Modules:
-  1. Core (global summary, weekly breakdown, session detail)
-  2. PR tracking
-  3. Muscle group analysis
-  4. Relative intensity & BBD ratios        ← NEW
-  5. Intra-session fatigue detection         ← NEW
-  6. Training density & efficiency           ← NEW
-  7. Body comp / recovery correlation        ← NEW
-  8. Strength standards (DOTS)               ← NEW
-  9. Recovery indicators (improved)          ← NEW
-  10. Adherence & targets
+All exercise matching uses exercise_template_id, never localized names.
+Exercise names (df["exercise"]) are only used for display.
 """
 import pandas as pd
 import numpy as np
@@ -20,10 +10,16 @@ from datetime import datetime, timedelta
 from src.config import (
     PROGRAM_START,
     DAY_CONFIG,
-    MUSCLE_MAP,
     MUSCLE_GROUP_COLORS,
-    KEY_LIFTS,
     WEEKLY_TARGETS,
+    EXERCISE_DB,
+    DEADLIFT_TEMPLATE_ID,
+    SHRUG_TEMPLATE_ID,
+    PULLUP_TEMPLATE_ID,
+    get_muscle_group,
+    get_key_lift_ids,
+    get_strength_standards,
+    get_bbd_ratios,
 )
 
 
@@ -37,7 +33,8 @@ def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
         return df
     df = df.copy()
     df["week"] = df["date"].apply(calc_week)
-    df["muscle_group"] = df["exercise"].map(MUSCLE_MAP).fillna("Otro")
+    # ── KEY CHANGE: muscle group from template_id, not exercise name ──
+    df["muscle_group"] = df["exercise_template_id"].map(get_muscle_group).fillna("Otro")
     df["day_color"] = df["day_num"].map(
         lambda x: DAY_CONFIG.get(x, {}).get("color", "#666")
     )
@@ -47,7 +44,6 @@ def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════
 # 1. CORE — Global Summary, Weekly Breakdown, Sessions
 # ═══════════════════════════════════════════════════════════════════════
-
 
 def global_summary(df: pd.DataFrame) -> dict:
     if df.empty:
@@ -95,7 +91,6 @@ def weekly_breakdown(df: pd.DataFrame) -> pd.DataFrame:
     weekly["vol_delta_pct"] = weekly["total_volume"].pct_change() * 100
     weekly["adherence_pct"] = (weekly["sessions"] / 5 * 100).clip(upper=100).round(0)
 
-    # Total duration per week
     session_dur = df.groupby(["week", "hevy_id"])["duration_min"].first().reset_index()
     dur_weekly = session_dur.groupby("week")["duration_min"].sum().reset_index()
     dur_weekly.columns = ["week", "total_duration"]
@@ -134,7 +129,6 @@ def session_detail(df: pd.DataFrame, hevy_id: str = None) -> pd.DataFrame:
 # 2. PR TRACKING
 # ═══════════════════════════════════════════════════════════════════════
 
-
 def pr_table(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
@@ -163,7 +157,6 @@ def pr_history(df: pd.DataFrame, exercise: str) -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════
 # 3. MUSCLE GROUP ANALYSIS
 # ═══════════════════════════════════════════════════════════════════════
-
 
 def muscle_volume(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -197,27 +190,19 @@ def weekly_muscle_volume(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 4. NEW — RELATIVE INTENSITY & BBD RATIOS
+# 4. RELATIVE INTENSITY & BBD RATIOS — uses template_id
 # ═══════════════════════════════════════════════════════════════════════
 
-BBD_LOAD_PRESCRIPTIONS = {
-    "Encogimiento de Hombros (Barra)": {"target_pct": (85, 100), "label": "Shrug / DL"},
-    "Remo Pendlay (Barra)": {"target_pct": (45, 55), "label": "Pendlay / DL"},
-    "Sentadilla Frontal (Barra)": {"target_pct": (55, 70), "label": "Front Squat / DL"},
-    "Press Militar (Barra)": {"target_pct": (35, 45), "label": "OHP / DL"},
-    "Klokov Press": {"target_pct": (25, 35), "label": "Klokov / DL"},
-}
-
-DEADLIFT_EXERCISES = ["Peso Muerto (Barra)", "Reverse Deadlift (Bob Peoples)"]
-
-
 def estimate_dl_1rm(df: pd.DataFrame) -> float:
-    dl_df = df[df["exercise"].isin(DEADLIFT_EXERCISES)]
+    """Estimate deadlift 1RM from actual DL data or Shrug fallback."""
+    # Direct deadlift data
+    dl_df = df[df["exercise_template_id"] == DEADLIFT_TEMPLATE_ID]
     if not dl_df.empty and dl_df["e1rm"].max() > 0:
         return float(dl_df["e1rm"].max())
-    shrug = df[df["exercise"] == "Encogimiento de Hombros (Barra)"]
-    if not shrug.empty and shrug["e1rm"].max() > 0:
-        return round(shrug["e1rm"].max() / 0.925, 1)
+    # Fallback: estimate from shrug (~92.5% of DL)
+    shrug_df = df[df["exercise_template_id"] == SHRUG_TEMPLATE_ID]
+    if not shrug_df.empty and shrug_df["e1rm"].max() > 0:
+        return round(shrug_df["e1rm"].max() / 0.925, 1)
     return 0.0
 
 
@@ -234,23 +219,31 @@ def relative_intensity(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def bbd_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    """Calculate BBD exercise ratios vs estimated DL 1RM — uses template_id."""
     dl_1rm = estimate_dl_1rm(df)
     if dl_1rm == 0:
         return pd.DataFrame()
+    
+    ratio_config = get_bbd_ratios()  # {template_id: {label, range}}
     rows = []
-    for exercise, rx in BBD_LOAD_PRESCRIPTIONS.items():
-        ex_df = df[df["exercise"] == exercise]
-        if ex_df.empty:
+    for tid, rx in ratio_config.items():
+        ex_df = df[df["exercise_template_id"] == tid]
+        # Get display name from data or fallback to EXERCISE_DB
+        display_name = (
+            ex_df.iloc[0]["exercise"] if not ex_df.empty
+            else EXERCISE_DB.get(tid, {}).get("name", tid)
+        )
+        if ex_df.empty or ex_df["e1rm"].max() <= 0:
             rows.append({
-                "exercise": exercise, "label": rx["label"],
+                "exercise": display_name, "label": rx["label"],
                 "current_weight": 0, "pct_of_dl": 0,
-                "target_low": rx["target_pct"][0], "target_high": rx["target_pct"][1],
+                "target_low": rx["range"][0], "target_high": rx["range"][1],
                 "status": "⬜ Sin datos", "dl_1rm": dl_1rm,
             })
             continue
         best = ex_df.loc[ex_df["e1rm"].idxmax()]
         pct = round(best["max_weight"] / dl_1rm * 100, 1)
-        lo, hi = rx["target_pct"]
+        lo, hi = rx["range"]
         if pct < lo:
             status = f"🔴 Bajo ({pct:.0f}%)"
         elif pct > hi:
@@ -258,7 +251,7 @@ def bbd_ratios(df: pd.DataFrame) -> pd.DataFrame:
         else:
             status = f"🟢 En rango ({pct:.0f}%)"
         rows.append({
-            "exercise": exercise, "label": rx["label"],
+            "exercise": display_name, "label": rx["label"],
             "current_weight": best["max_weight"], "pct_of_dl": pct,
             "target_low": lo, "target_high": hi,
             "status": status, "dl_1rm": dl_1rm,
@@ -267,7 +260,8 @@ def bbd_ratios(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def dominadas_progress(df: pd.DataFrame) -> dict:
-    dom = df[df["exercise"] == "Dominada"]
+    """Track pull-up volume progress — uses template_id."""
+    dom = df[df["exercise_template_id"] == PULLUP_TEMPLATE_ID]
     if dom.empty:
         return {"target": 75, "best": 0, "last": 0, "pct": 0, "history": []}
     per_session = dom.groupby(["hevy_id", "date"])["total_reps"].sum().reset_index().sort_values("date")
@@ -281,9 +275,8 @@ def dominadas_progress(df: pd.DataFrame) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 5. NEW — INTRA-SESSION FATIGUE DETECTION
+# 5. INTRA-SESSION FATIGUE DETECTION
 # ═══════════════════════════════════════════════════════════════════════
-
 
 def intra_session_fatigue(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -332,9 +325,8 @@ def fatigue_trend(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 6. NEW — TRAINING DENSITY & EFFICIENCY
+# 6. TRAINING DENSITY & EFFICIENCY
 # ═══════════════════════════════════════════════════════════════════════
-
 
 def session_density(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
@@ -364,9 +356,8 @@ def density_trend(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 7. NEW — BODY COMP / RECOVERY CORRELATION
+# 7. BODY COMP / RECOVERY CORRELATION
 # ═══════════════════════════════════════════════════════════════════════
-
 
 def correlate_with_body(training_df: pd.DataFrame, body_df: pd.DataFrame) -> pd.DataFrame:
     if training_df.empty or body_df.empty:
@@ -407,9 +398,8 @@ def compute_correlations(merged: pd.DataFrame) -> pd.DataFrame:
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 8. NEW — STRENGTH STANDARDS (DOTS)
+# 8. STRENGTH STANDARDS (DOTS) — uses template_id
 # ═══════════════════════════════════════════════════════════════════════
-
 
 def dots_coefficient(bw_kg: float, gender: str = "male") -> float:
     if gender == "male":
@@ -421,26 +411,24 @@ def dots_coefficient(bw_kg: float, gender: str = "male") -> float:
 
 
 def strength_standards(df: pd.DataFrame, bodyweight: float = 86.0) -> pd.DataFrame:
+    """Calculate strength standards with DOTS — uses template_id for matching."""
     if df.empty:
         return pd.DataFrame()
     coeff = dots_coefficient(bodyweight)
-    STANDARDS = {
-        "Peso Muerto (Barra)": {"int": 1.75, "adv": 2.5, "elite": 3.0},
-        "Reverse Deadlift (Bob Peoples)": {"int": 1.75, "adv": 2.5, "elite": 3.0},
-        "Sentadilla Frontal (Barra)": {"int": 1.25, "adv": 1.75, "elite": 2.25},
-        "Press de Banca - Agarre Cerrado (Barra)": {"int": 1.1, "adv": 1.5, "elite": 2.0},
-        "Press Militar (Barra)": {"int": 0.65, "adv": 1.0, "elite": 1.25},
-        "Encogimiento de Hombros (Barra)": {"int": 1.0, "adv": 1.5, "elite": 2.0},
-        "Remo Pendlay (Barra)": {"int": 0.75, "adv": 1.25, "elite": 1.5},
-    }
+    standards = get_strength_standards()  # {template_id: {int, adv, elite}}
+    
     rows = []
-    for exercise, th in STANDARDS.items():
-        ex_df = df[df["exercise"] == exercise]
+    for tid, th in standards.items():
+        ex_df = df[df["exercise_template_id"] == tid]
         if ex_df.empty:
             continue
         best_e1rm = ex_df["e1rm"].max()
         if best_e1rm <= 0:
             continue
+        
+        # Use the actual display name from workout data
+        display_name = ex_df.iloc[0]["exercise"]
+        
         ratio = best_e1rm / bodyweight
         dots = round(best_e1rm * coeff, 1)
         if ratio >= th["elite"]:
@@ -467,7 +455,7 @@ def strength_standards(df: pd.DataFrame, bodyweight: float = 86.0) -> pd.DataFra
             else "—"
         )
         rows.append({
-            "exercise": exercise, "best_e1rm": best_e1rm,
+            "exercise": display_name, "best_e1rm": best_e1rm,
             "bw_ratio": round(ratio, 2), "dots_score": dots,
             "level": level, "percentile": min(pct, 99),
             "next_threshold": f"{next_th_kg:.0f}kg ({next_label})" if next_th_kg > 0 else "—",
@@ -477,9 +465,8 @@ def strength_standards(df: pd.DataFrame, bodyweight: float = 86.0) -> pd.DataFra
 
 
 # ═══════════════════════════════════════════════════════════════════════
-# 9. RECOVERY INDICATORS (IMPROVED)
+# 9. RECOVERY INDICATORS
 # ═══════════════════════════════════════════════════════════════════════
-
 
 def recovery_indicators(df: pd.DataFrame) -> pd.DataFrame:
     weekly = weekly_breakdown(df)
@@ -521,7 +508,6 @@ def recovery_indicators(df: pd.DataFrame) -> pd.DataFrame:
 # 10. ADHERENCE & TARGETS
 # ═══════════════════════════════════════════════════════════════════════
 
-
 def day_adherence(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for day_num, cfg in DAY_CONFIG.items():
@@ -536,7 +522,7 @@ def day_adherence(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def vs_targets(df: pd.DataFrame) -> list[dict]:
+def vs_targets(df: pd.DataFrame) -> list:
     current_week = calc_week(pd.Timestamp(datetime.now().date()))
     wk_df = df[df["week"] == current_week]
     if wk_df.empty and not df.empty:
@@ -556,15 +542,19 @@ def vs_targets(df: pd.DataFrame) -> list[dict]:
     ]
 
 
-def key_lifts_progression(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def key_lifts_progression(df: pd.DataFrame) -> dict:
+    """Track progression for key lifts — uses template_id."""
+    key_ids = get_key_lift_ids()
     result = {}
-    for lift in KEY_LIFTS:
-        ldf = df[df["exercise"] == lift].copy()
+    for tid in key_ids:
+        ldf = df[df["exercise_template_id"] == tid].copy()
         if ldf.empty:
             continue
+        # Use actual display name as dict key
+        display_name = ldf.iloc[0]["exercise"]
         ldf = ldf.sort_values("date")
         ldf["running_max"] = ldf["e1rm"].cummax()
-        result[lift] = ldf[
+        result[display_name] = ldf[
             ["date", "week", "max_weight", "max_reps_at_max", "e1rm", "volume_kg", "n_sets", "running_max"]
         ].reset_index(drop=True)
     return result
