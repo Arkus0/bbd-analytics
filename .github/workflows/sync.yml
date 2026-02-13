@@ -39,7 +39,6 @@ jobs:
         env:
           HEVY_API_KEY: ${{ secrets.HEVY_API_KEY }}
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
-          NOTION_BBD_LOGBOOK_DB: ${{ secrets.NOTION_BBD_LOGBOOK_DB }}
         run: |
           if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
             python -m src.sync --dry-run
