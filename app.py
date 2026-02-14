@@ -678,68 +678,75 @@ elif page == "🧠 Inteligencia":
     with tab4:
         st.markdown("### 🕐 Yo vs Yo — Comparativa Histórica")
 
-        weeks_options = [4, 8, 12]
-        available_weeks = [w for w in weeks_options if w < summary.get("current_week", 1)]
-        if not available_weeks:
-            available_weeks = [4]
+        weeks_options = [2, 4, 8, 12]
+        current_wk = summary.get("current_week", 1)
+        available_weeks = [w for w in weeks_options if w < current_wk]
 
-        weeks_ago = st.select_slider("Comparar vs hace X semanas", options=available_weeks,
-                                     value=available_weeks[0])
-
-        comp = historical_comparison(df, weeks_ago=weeks_ago)
-        if "error" in comp:
-            st.info(comp["error"])
-        elif comp:
-            # Volume comparison
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Vol/sem ahora", f"{comp['volume_now']:,} kg",
-                      delta=f"{comp['volume_delta_pct']:+.1f}%")
-            c2.metric(f"Vol/sem hace {weeks_ago} sem", f"{comp['volume_then']:,} kg")
-            c3.metric("Semana actual", comp["current_week"])
-
-            # Exercise deltas
-            if comp.get("exercise_deltas"):
-                st.divider()
-                st.markdown("### Progresión por Ejercicio")
-                ex_df = pd.DataFrame(comp["exercise_deltas"])
-                disp = ex_df[["exercise", "e1rm_then", "e1rm_now", "delta_kg", "delta_pct", "trend"]].copy()
-                disp.columns = ["Ejercicio", f"e1RM (sem {comp['compare_week']})",
-                                "e1RM actual", "Δ kg", "Δ %", ""]
-                st.dataframe(disp, hide_index=True, use_container_width=True)
-
-            # Radar chart — strength profile
-            if comp.get("profile_now") and comp.get("profile_then"):
-                st.divider()
-                st.markdown("### Perfil de Fuerza — Radar")
-                axes = list(comp["profile_now"].keys())
-                now_vals = [comp["profile_now"].get(a, 0) for a in axes]
-                then_vals = [comp["profile_then"].get(a, 0) for a in axes]
-
-                fig = go.Figure()
-                fig.add_trace(go.Scatterpolar(
-                    r=now_vals + [now_vals[0]], theta=axes + [axes[0]],
-                    fill="toself", name="Ahora",
-                    fillcolor="rgba(239, 68, 68, 0.2)", line_color="#ef4444",
-                ))
-                fig.add_trace(go.Scatterpolar(
-                    r=then_vals + [then_vals[0]], theta=axes + [axes[0]],
-                    fill="toself", name=f"Hace {weeks_ago} sem",
-                    fillcolor="rgba(59, 130, 246, 0.2)", line_color="#3b82f6",
-                ))
-                fig.update_layout(
-                    polar=dict(
-                        bgcolor="rgba(0,0,0,0)",
-                        radialaxis=dict(range=[0, 100], showticklabels=True,
-                                        gridcolor="#2d3748", tickfont=dict(color="#94a3b8")),
-                        angularaxis=dict(gridcolor="#2d3748",
-                                         tickfont=dict(color="#e2e8f0", size=12)),
-                    ),
-                    **PL, height=450, showlegend=True,
-                    legend=dict(x=0.85, y=1.1),
-                )
-                st.plotly_chart(fig, use_container_width=True, key="radar_yo_vs_yo")
+        if len(available_weeks) < 1:
+            st.info(f"Llevas {current_wk} semana(s) de programa. "
+                    "La comparativa histórica estará disponible a partir de la semana 3.")
         else:
-            st.info("No hay datos suficientes para la comparativa seleccionada.")
+            if len(available_weeks) == 1:
+                weeks_ago = available_weeks[0]
+                st.caption(f"Comparando vs hace {weeks_ago} semanas")
+            else:
+                weeks_ago = st.select_slider("Comparar vs hace X semanas", options=available_weeks,
+                                             value=available_weeks[0])
+
+            comp = historical_comparison(df, weeks_ago=weeks_ago)
+            if "error" in comp:
+                st.info(comp["error"])
+            elif comp:
+                # Volume comparison
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Vol/sem ahora", f"{comp['volume_now']:,} kg",
+                          delta=f"{comp['volume_delta_pct']:+.1f}%")
+                c2.metric(f"Vol/sem hace {weeks_ago} sem", f"{comp['volume_then']:,} kg")
+                c3.metric("Semana actual", comp["current_week"])
+
+                # Exercise deltas
+                if comp.get("exercise_deltas"):
+                    st.divider()
+                    st.markdown("### Progresión por Ejercicio")
+                    ex_df = pd.DataFrame(comp["exercise_deltas"])
+                    disp = ex_df[["exercise", "e1rm_then", "e1rm_now", "delta_kg", "delta_pct", "trend"]].copy()
+                    disp.columns = ["Ejercicio", f"e1RM (sem {comp['compare_week']})",
+                                    "e1RM actual", "Δ kg", "Δ %", ""]
+                    st.dataframe(disp, hide_index=True, use_container_width=True)
+
+                # Radar chart — strength profile
+                if comp.get("profile_now") and comp.get("profile_then"):
+                    st.divider()
+                    st.markdown("### Perfil de Fuerza — Radar")
+                    axes = list(comp["profile_now"].keys())
+                    now_vals = [comp["profile_now"].get(a, 0) for a in axes]
+                    then_vals = [comp["profile_then"].get(a, 0) for a in axes]
+
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatterpolar(
+                        r=now_vals + [now_vals[0]], theta=axes + [axes[0]],
+                        fill="toself", name="Ahora",
+                        fillcolor="rgba(239, 68, 68, 0.2)", line_color="#ef4444",
+                    ))
+                    fig.add_trace(go.Scatterpolar(
+                        r=then_vals + [then_vals[0]], theta=axes + [axes[0]],
+                        fill="toself", name=f"Hace {weeks_ago} sem",
+                        fillcolor="rgba(59, 130, 246, 0.2)", line_color="#3b82f6",
+                    ))
+                    fig.update_layout(
+                        polar=dict(
+                            bgcolor="rgba(0,0,0,0)",
+                            radialaxis=dict(range=[0, 100], showticklabels=True,
+                                            gridcolor="#2d3748", tickfont=dict(color="#94a3b8")),
+                            angularaxis=dict(gridcolor="#2d3748",
+                                             tickfont=dict(color="#e2e8f0", size=12)),
+                        ),
+                        **PL, height=450, showlegend=True,
+                        legend=dict(x=0.85, y=1.1),
+                    )
+                    st.plotly_chart(fig, use_container_width=True, key="radar_yo_vs_yo")
+            else:
+                st.info("No hay datos suficientes para la comparativa seleccionada.")
 
 
 # ══════════════════════════════════════════════════════════════════════
