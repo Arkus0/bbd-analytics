@@ -253,7 +253,7 @@ elif page == "🎯 Ratios BBD":
                             "bar": {"color": "#ef4444"},
                             "bgcolor": "#1a1a2e",
                             "steps": [
-                                {"range": [row["target_low"], row["target_high"]], "color": "#22c55e30"},
+                                {"range": [row["target_low"], row["target_high"]], "color": "rgba(34, 197, 94, 0.19)"},
                             ],
                             "threshold": {
                                 "line": {"color": "#22c55e", "width": 3},
