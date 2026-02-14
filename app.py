@@ -20,6 +20,9 @@ from src.analytics import (
     intra_session_fatigue, fatigue_trend,
     session_density, density_trend,
     strength_standards, dots_coefficient,
+    # v3 — Phase 1
+    plateau_detection, acwr, mesocycle_summary, calc_mesocycle,
+    strength_profile, historical_comparison,
 )
 from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN
 import requests as _requests
@@ -123,6 +126,7 @@ with st.sidebar:
         "🔬 Fatiga Intra-sesión",
         "⚡ Densidad",
         "🏋️ Strength Standards",
+        "🧠 Inteligencia",
         "💪 Sesiones",
         "🏆 PRs",
         "🎯 Adherencia",
@@ -506,6 +510,233 @@ elif page == "🏋️ Strength Standards":
     fig.add_hline(y=2.0, line_dash="dot", line_color="#f59e0b", annotation_text="2×BW")
     fig.update_layout(**PL, height=350, yaxis_title="×BW", showlegend=False)
     st.plotly_chart(fig, use_container_width=True, key="chart_11")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 🧠 INTELIGENCIA — Phase 1 (Plateau, ACWR, Mesociclos, Yo vs Yo)
+# ══════════════════════════════════════════════════════════════════════
+elif page == "🧠 Inteligencia":
+    st.markdown("## 🧠 Inteligencia de Entrenamiento")
+    st.caption("Detección de estancamiento, carga aguda/crónica, mesociclos y comparativas históricas.")
+
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🔴 Estancamiento", "⚖️ ACWR", "📦 Mesociclos", "🕐 Yo vs Yo"
+    ])
+
+    # ── Tab 1: Plateau Detection ──
+    with tab1:
+        st.markdown("### 🔴 Detección de Estancamiento")
+        st.caption("Si un ejercicio no mejora su e1RM en 3+ semanas → alerta de plateau.")
+
+        plateaus = plateau_detection(df)
+        if plateaus.empty:
+            st.info("Se necesitan ≥2 semanas de datos por ejercicio para detectar estancamientos.")
+        else:
+            # Summary cards
+            stuck = (plateaus["status"].str.contains("Estancado")).sum()
+            watch = (plateaus["status"].str.contains("Vigilar")).sum()
+            rising = (plateaus["status"].str.contains("Subiendo")).sum()
+            c1, c2, c3 = st.columns(3)
+            c1.metric("🔴 Estancados", stuck)
+            c2.metric("🟡 Vigilar", watch)
+            c3.metric("🟢 Progresando", rising + (plateaus["status"].str.contains("Estable")).sum())
+
+            st.divider()
+
+            # Table
+            disp = plateaus[["exercise", "pr_e1rm", "last_e1rm", "pct_of_pr",
+                             "weeks_since_pr", "trend_slope", "status"]].copy()
+            disp.columns = ["Ejercicio", "PR (e1RM)", "Último e1RM", "% del PR",
+                            "Sem. sin PR", "Tendencia", "Estado"]
+
+            # Color-code rows via status
+            st.dataframe(disp, hide_index=True, use_container_width=True)
+
+            # Alerts
+            stale = plateaus[plateaus["status"].str.contains("Estancado")]
+            if not stale.empty:
+                st.warning(
+                    "⚠️ **Ejercicios estancados:** "
+                    + ", ".join(f"{r['exercise']} ({r['weeks_since_pr']} sem sin PR)" for _, r in stale.iterrows())
+                    + "\n\nConsidera: variar reps/series, deload, o cambiar variante."
+                )
+
+    # ── Tab 2: ACWR ──
+    with tab2:
+        st.markdown("### ⚖️ Acute:Chronic Workload Ratio")
+        st.caption("Compara volumen reciente vs media de últimas 4 semanas. "
+                   "Zona segura: 0.8–1.3. Sobre 1.5 = riesgo de lesión/overtraining.")
+
+        acwr_df = acwr(df)
+        if acwr_df.empty or acwr_df["acwr"].isna().all():
+            st.info("Se necesitan al menos 2 semanas de datos para calcular ACWR.")
+        else:
+            valid = acwr_df.dropna(subset=["acwr"])
+            if not valid.empty:
+                latest = valid.iloc[-1]
+
+                # Big ACWR gauge
+                fig = go.Figure(go.Indicator(
+                    mode="gauge+number+delta",
+                    value=latest["acwr"],
+                    number={"font": {"size": 48, "color": "#f1f5f9"}},
+                    delta={"reference": 1.0, "position": "bottom"},
+                    gauge={
+                        "axis": {"range": [0.4, 2.0], "tickcolor": "#4a5568"},
+                        "bar": {"color": "#ef4444"},
+                        "bgcolor": "#1a1a2e",
+                        "steps": [
+                            {"range": [0.4, 0.8], "color": "rgba(59, 130, 246, 0.2)"},
+                            {"range": [0.8, 1.3], "color": "rgba(34, 197, 94, 0.2)"},
+                            {"range": [1.3, 1.5], "color": "rgba(234, 179, 8, 0.2)"},
+                            {"range": [1.5, 2.0], "color": "rgba(239, 68, 68, 0.2)"},
+                        ],
+                    },
+                ))
+                fig.update_layout(
+                    height=250, margin=dict(l=30, r=30, t=30, b=10),
+                    paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#e2e8f0"),
+                )
+                st.plotly_chart(fig, use_container_width=True, key="acwr_gauge")
+                st.markdown(f"**Semana {int(latest['week'])}:** {latest['acwr_zone']}")
+
+                # ACWR trend line
+                st.divider()
+                st.markdown("### Tendencia ACWR")
+                fig2 = go.Figure()
+                fig2.add_trace(go.Scatter(
+                    x=valid["week"].apply(lambda w: f"Sem {int(w)}"), y=valid["acwr"],
+                    mode="lines+markers+text", text=valid["acwr"].apply(lambda v: f"{v:.2f}"),
+                    textposition="top center", line=dict(color="#ef4444", width=3),
+                    marker=dict(size=10),
+                ))
+                # Zone bands
+                fig2.add_hrect(y0=0.8, y1=1.3, fillcolor="rgba(34,197,94,0.08)", line_width=0,
+                               annotation_text="Zona segura", annotation_position="top left")
+                fig2.add_hrect(y0=1.3, y1=1.5, fillcolor="rgba(234,179,8,0.08)", line_width=0)
+                fig2.add_hrect(y0=1.5, y1=2.0, fillcolor="rgba(239,68,68,0.08)", line_width=0)
+                fig2.add_hline(y=1.0, line_dash="dot", line_color="#4a5568")
+                fig2.update_layout(**PL, height=300, yaxis_title="ACWR", showlegend=False)
+                st.plotly_chart(fig2, use_container_width=True, key="acwr_trend")
+
+                # Table
+                disp = valid[["week", "acute_volume", "chronic_volume", "acwr", "acwr_zone", "sessions"]].copy()
+                disp.columns = ["Semana", "Vol. Agudo", "Vol. Crónico", "ACWR", "Zona", "Sesiones"]
+                disp["Vol. Agudo"] = disp["Vol. Agudo"].apply(lambda v: f"{v:,.0f}")
+                disp["Vol. Crónico"] = disp["Vol. Crónico"].apply(lambda v: f"{v:,.0f}" if pd.notna(v) else "—")
+                st.dataframe(disp, hide_index=True, use_container_width=True)
+
+    # ── Tab 3: Mesocycles ──
+    with tab3:
+        st.markdown("### 📦 Mesociclos — Bloques de 4 Semanas")
+        st.caption("Agrupación automática del programa BBD en mesociclos de 4 semanas con comparativas.")
+
+        meso = mesocycle_summary(df)
+        if meso.empty or len(meso) < 1:
+            st.info("Se necesita al menos 1 mesociclo completo (4 semanas) para análisis significativo.")
+        else:
+            # Mesocycle cards
+            for _, m in meso.iterrows():
+                weeks_label = f"Sem {int(m['week_start'])}–{int(m['week_end'])}"
+                vol_delta = f" ({m['vol_delta_pct']:+.1f}%)" if pd.notna(m["vol_delta_pct"]) else ""
+                fat_str = f"{m['avg_fatigue']:.1f}%" if pd.notna(m["avg_fatigue"]) else "—"
+
+                with st.expander(
+                    f"📦 Mesociclo {int(m['mesocycle'])} — {weeks_label} | "
+                    f"{int(m['total_sessions'])} sesiones · "
+                    f"{m['avg_weekly_volume']:,.0f} kg/sem{vol_delta}"
+                ):
+                    c1, c2, c3, c4 = st.columns(4)
+                    c1.metric("Sesiones", int(m["total_sessions"]))
+                    c2.metric("Vol. medio/sem", f"{m['avg_weekly_volume']:,.0f} kg",
+                              delta=f"{m['vol_delta_pct']:+.1f}%" if pd.notna(m["vol_delta_pct"]) else None)
+                    c3.metric("e1RM medio", f"{m['avg_e1rm']:.1f} kg",
+                              delta=f"{m['e1rm_delta']:+.1f}" if pd.notna(m["e1rm_delta"]) else None)
+                    c4.metric("Fatiga media", fat_str,
+                              delta=f"{m['fatigue_delta']:+.1f}pp" if pd.notna(m["fatigue_delta"]) else None,
+                              delta_color="inverse")
+
+            # Mesocycle comparison chart
+            if len(meso) >= 2:
+                st.divider()
+                st.markdown("### Evolución por Mesociclo")
+                fig = go.Figure()
+                x_labels = [f"Meso {int(m)}" for m in meso["mesocycle"]]
+                fig.add_trace(go.Bar(
+                    x=x_labels, y=meso["avg_weekly_volume"],
+                    name="Vol. medio/sem", marker_color="#ef4444",
+                    text=meso["avg_weekly_volume"].apply(lambda v: f"{v:,.0f}"),
+                    textposition="outside",
+                ))
+                fig.update_layout(**PL, height=300, yaxis_title="Volumen (kg/sem)", showlegend=False)
+                st.plotly_chart(fig, use_container_width=True, key="meso_vol")
+
+    # ── Tab 4: Historical Comparison ──
+    with tab4:
+        st.markdown("### 🕐 Yo vs Yo — Comparativa Histórica")
+
+        weeks_options = [4, 8, 12]
+        available_weeks = [w for w in weeks_options if w < summary.get("current_week", 1)]
+        if not available_weeks:
+            available_weeks = [4]
+
+        weeks_ago = st.select_slider("Comparar vs hace X semanas", options=available_weeks,
+                                     value=available_weeks[0])
+
+        comp = historical_comparison(df, weeks_ago=weeks_ago)
+        if "error" in comp:
+            st.info(comp["error"])
+        elif comp:
+            # Volume comparison
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Vol/sem ahora", f"{comp['volume_now']:,} kg",
+                      delta=f"{comp['volume_delta_pct']:+.1f}%")
+            c2.metric(f"Vol/sem hace {weeks_ago} sem", f"{comp['volume_then']:,} kg")
+            c3.metric("Semana actual", comp["current_week"])
+
+            # Exercise deltas
+            if comp.get("exercise_deltas"):
+                st.divider()
+                st.markdown("### Progresión por Ejercicio")
+                ex_df = pd.DataFrame(comp["exercise_deltas"])
+                disp = ex_df[["exercise", "e1rm_then", "e1rm_now", "delta_kg", "delta_pct", "trend"]].copy()
+                disp.columns = ["Ejercicio", f"e1RM (sem {comp['compare_week']})",
+                                "e1RM actual", "Δ kg", "Δ %", ""]
+                st.dataframe(disp, hide_index=True, use_container_width=True)
+
+            # Radar chart — strength profile
+            if comp.get("profile_now") and comp.get("profile_then"):
+                st.divider()
+                st.markdown("### Perfil de Fuerza — Radar")
+                axes = list(comp["profile_now"].keys())
+                now_vals = [comp["profile_now"].get(a, 0) for a in axes]
+                then_vals = [comp["profile_then"].get(a, 0) for a in axes]
+
+                fig = go.Figure()
+                fig.add_trace(go.Scatterpolar(
+                    r=now_vals + [now_vals[0]], theta=axes + [axes[0]],
+                    fill="toself", name="Ahora",
+                    fillcolor="rgba(239, 68, 68, 0.2)", line_color="#ef4444",
+                ))
+                fig.add_trace(go.Scatterpolar(
+                    r=then_vals + [then_vals[0]], theta=axes + [axes[0]],
+                    fill="toself", name=f"Hace {weeks_ago} sem",
+                    fillcolor="rgba(59, 130, 246, 0.2)", line_color="#3b82f6",
+                ))
+                fig.update_layout(
+                    polar=dict(
+                        bgcolor="rgba(0,0,0,0)",
+                        radialaxis=dict(range=[0, 100], showticklabels=True,
+                                        gridcolor="#2d3748", tickfont=dict(color="#94a3b8")),
+                        angularaxis=dict(gridcolor="#2d3748",
+                                         tickfont=dict(color="#e2e8f0", size=12)),
+                    ),
+                    **PL, height=450, showlegend=True,
+                    legend=dict(x=0.85, y=1.1),
+                )
+                st.plotly_chart(fig, use_container_width=True, key="radar_yo_vs_yo")
+        else:
+            st.info("No hay datos suficientes para la comparativa seleccionada.")
 
 
 # ══════════════════════════════════════════════════════════════════════

@@ -558,3 +558,349 @@ def key_lifts_progression(df: pd.DataFrame) -> dict:
             ["date", "week", "max_weight", "max_reps_at_max", "e1rm", "volume_kg", "n_sets", "running_max"]
         ].reset_index(drop=True)
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 11. PLATEAU DETECTION — Phase 1
+# ═══════════════════════════════════════════════════════════════════════
+
+def plateau_detection(df: pd.DataFrame, stale_weeks: int = 3) -> pd.DataFrame:
+    """
+    Detect exercises where e1RM has not improved in `stale_weeks` or more.
+    Returns a DataFrame with one row per exercise showing plateau status.
+    Requires ≥2 weeks of data per exercise to be meaningful.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    weighted = df[df["e1rm"] > 0].copy()
+    if weighted.empty:
+        return pd.DataFrame()
+
+    current_week = calc_week(pd.Timestamp(datetime.now().date()))
+    rows = []
+
+    for exercise in weighted["exercise"].unique():
+        ex_df = weighted[weighted["exercise"] == exercise].sort_values("date")
+        weeks_present = ex_df["week"].nunique()
+        if weeks_present < 2:
+            continue
+
+        # Best e1RM per week
+        weekly_best = ex_df.groupby("week")["e1rm"].max().reset_index()
+        weekly_best = weekly_best.sort_values("week")
+
+        # Current PR and when it was set
+        pr_e1rm = weekly_best["e1rm"].max()
+        pr_week = weekly_best.loc[weekly_best["e1rm"].idxmax(), "week"]
+        weeks_since_pr = current_week - pr_week
+
+        # Trend: linear regression slope over last 4 weeks
+        recent = weekly_best.tail(4)
+        if len(recent) >= 2:
+            x = recent["week"].values.astype(float)
+            y = recent["e1rm"].values.astype(float)
+            slope = np.polyfit(x, y, 1)[0]
+        else:
+            slope = 0.0
+
+        # Classification
+        if weeks_since_pr >= stale_weeks and slope < 0.5:
+            status = "🔴 Estancado"
+        elif weeks_since_pr >= 2 and slope < 0.5:
+            status = "🟡 Vigilar"
+        elif slope > 1.0:
+            status = "🟢 Subiendo"
+        else:
+            status = "🟢 Estable"
+
+        # Last week vs PR
+        last_week_best = weekly_best.iloc[-1]["e1rm"]
+        pct_of_pr = round(last_week_best / pr_e1rm * 100, 1) if pr_e1rm > 0 else 0
+
+        rows.append({
+            "exercise": exercise,
+            "pr_e1rm": round(pr_e1rm, 1),
+            "pr_week": int(pr_week),
+            "weeks_since_pr": int(weeks_since_pr),
+            "last_e1rm": round(last_week_best, 1),
+            "pct_of_pr": pct_of_pr,
+            "trend_slope": round(slope, 2),
+            "weeks_tracked": weeks_present,
+            "status": status,
+        })
+
+    result = pd.DataFrame(rows)
+    if not result.empty:
+        result = result.sort_values("weeks_since_pr", ascending=False).reset_index(drop=True)
+    return result
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 12. ACWR — Acute:Chronic Workload Ratio — Phase 1
+# ═══════════════════════════════════════════════════════════════════════
+
+def acwr(df: pd.DataFrame, acute_weeks: int = 1, chronic_weeks: int = 4) -> pd.DataFrame:
+    """
+    Acute:Chronic Workload Ratio per week.
+    Acute = last `acute_weeks` volume. Chronic = rolling avg of last `chronic_weeks`.
+    Safe zone: 0.8 – 1.3. Warning: 1.3 – 1.5. Risk: >1.5 or <0.8.
+    Requires at least `chronic_weeks` of data to compute.
+    """
+    wk = weekly_breakdown(df)
+    if wk.empty or len(wk) < 2:
+        return pd.DataFrame()
+
+    wk = wk.sort_values("week").copy()
+    # Chronic load = rolling mean of volume over last N weeks (excluding current)
+    wk["chronic_volume"] = wk["total_volume"].rolling(window=chronic_weeks, min_periods=2).mean()
+    wk["acute_volume"] = wk["total_volume"]  # acute = current week
+
+    # ACWR = acute / chronic
+    wk["acwr"] = np.where(
+        wk["chronic_volume"] > 0,
+        (wk["acute_volume"] / wk["chronic_volume"]).round(2),
+        np.nan,
+    )
+
+    # Zone classification
+    def classify_acwr(ratio):
+        if pd.isna(ratio):
+            return "⬜ Insuf. datos"
+        if ratio < 0.8:
+            return "🔵 Detraining"
+        if ratio <= 1.3:
+            return "🟢 Zona segura"
+        if ratio <= 1.5:
+            return "🟡 Overreaching"
+        return "🔴 Riesgo lesión"
+
+    wk["acwr_zone"] = wk["acwr"].apply(classify_acwr)
+
+    # Week-over-week volume delta for context
+    wk["vol_change_pct"] = (wk["total_volume"].pct_change() * 100).round(1)
+
+    return wk[["week", "acute_volume", "chronic_volume", "acwr", "acwr_zone",
+               "vol_change_pct", "sessions", "date_start", "date_end"]].copy()
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 13. MESOCYCLES — Automatic 4-week blocks — Phase 1
+# ═══════════════════════════════════════════════════════════════════════
+
+def calc_mesocycle(week: int) -> int:
+    """Map a program week to its mesocycle number (1-indexed, 4-week blocks)."""
+    return max(1, ((week - 1) // 4) + 1)
+
+
+def mesocycle_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Group training into 4-week mesocycle blocks.
+    Compare volume, intensity, fatigue, and sessions across mesocycles.
+    """
+    if df.empty:
+        return pd.DataFrame()
+
+    wk = weekly_breakdown(df)
+    if wk.empty:
+        return pd.DataFrame()
+
+    wk["mesocycle"] = wk["week"].apply(calc_mesocycle)
+
+    fatigue_data = fatigue_trend(df)
+
+    meso = wk.groupby("mesocycle").agg(
+        weeks=("week", "nunique"),
+        week_start=("week", "min"),
+        week_end=("week", "max"),
+        total_sessions=("sessions", "sum"),
+        total_volume=("total_volume", "sum"),
+        avg_weekly_volume=("total_volume", "mean"),
+        total_sets=("total_sets", "sum"),
+        avg_e1rm=("avg_e1rm", "mean"),
+        avg_density=("density_kg_min", "mean"),
+        date_start=("date_start", "min"),
+        date_end=("date_end", "max"),
+    ).reset_index()
+    # Round only numeric columns to avoid warning on datetime
+    _num = meso.select_dtypes(include=[np.number]).columns
+    meso[_num] = meso[_num].round(1)
+
+    # Merge fatigue if available
+    if not fatigue_data.empty:
+        fatigue_data["mesocycle"] = fatigue_data["week"].apply(calc_mesocycle)
+        meso_fatigue = fatigue_data.groupby("mesocycle").agg(
+            avg_fatigue=("avg_fatigue", "mean"),
+        ).reset_index().round(1)
+        meso = meso.merge(meso_fatigue, on="mesocycle", how="left")
+    else:
+        meso["avg_fatigue"] = np.nan
+
+    # Deltas vs previous mesocycle
+    meso["vol_delta_pct"] = meso["avg_weekly_volume"].pct_change().mul(100).round(1)
+    meso["e1rm_delta"] = meso["avg_e1rm"].diff().round(1)
+    meso["fatigue_delta"] = meso["avg_fatigue"].diff().round(1)
+    meso["density_delta"] = meso["avg_density"].pct_change().mul(100).round(1)
+
+    return meso
+
+
+def mesocycle_comparison(df: pd.DataFrame, meso_a: int, meso_b: int) -> dict:
+    """
+    Compare two specific mesocycles side-by-side.
+    Returns dict with deltas and insights.
+    """
+    meso_df = mesocycle_summary(df)
+    if meso_df.empty:
+        return {}
+
+    a = meso_df[meso_df["mesocycle"] == meso_a]
+    b = meso_df[meso_df["mesocycle"] == meso_b]
+
+    if a.empty or b.empty:
+        return {}
+
+    a, b = a.iloc[0], b.iloc[0]
+
+    def pct_delta(new, old):
+        if old == 0 or pd.isna(old):
+            return 0
+        return round((new - old) / old * 100, 1)
+
+    return {
+        "meso_a": meso_a, "meso_b": meso_b,
+        "vol_delta_pct": pct_delta(b["avg_weekly_volume"], a["avg_weekly_volume"]),
+        "e1rm_delta": round(b["avg_e1rm"] - a["avg_e1rm"], 1),
+        "fatigue_delta": round(b["avg_fatigue"] - a["avg_fatigue"], 1) if pd.notna(b["avg_fatigue"]) and pd.notna(a["avg_fatigue"]) else None,
+        "sessions_delta": int(b["total_sessions"] - a["total_sessions"]),
+        "density_delta_pct": pct_delta(b["avg_density"], a["avg_density"]),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 14. HISTORICAL COMPARISON ("Yo vs Yo") — Phase 1
+# ═══════════════════════════════════════════════════════════════════════
+
+def strength_profile(df: pd.DataFrame, as_of_week: int = None) -> dict:
+    """
+    Build a strength profile with 5 axes for radar chart:
+    - Empuje Vertical (OHP, Klokov, Bradford)
+    - Empuje Horizontal (Bench variations, Incline)
+    - Tracción (Pendlay, Pull-ups, DB Row, Cable Row)
+    - Piernas (Front Squat, Quarter Squat, Deadlift, Lunges, Leg Curl)
+    - Core & Grip (Ab Wheel, Dead Hold, KB Swing)
+
+    Returns {axis: normalized_score 0-100} based on best e1RM relative to body weight.
+    If as_of_week is given, only considers data up to that week.
+    """
+    if df.empty:
+        return {}
+
+    from src.config import BODYWEIGHT
+
+    data = df.copy()
+    if as_of_week is not None:
+        data = data[data["week"] <= as_of_week]
+    if data.empty:
+        return {}
+
+    # Map template_ids to axes
+    axis_map = {}
+    for tid, info in EXERCISE_DB.items():
+        mg = info["muscle_group"]
+        if mg in ("Hombros",):
+            axis_map[tid] = "Empuje Vertical"
+        elif mg in ("Pecho",):
+            axis_map[tid] = "Empuje Horizontal"
+        elif mg in ("Espalda", "Trapecios"):
+            axis_map[tid] = "Tracción"
+        elif mg in ("Cuádriceps", "Piernas", "Isquios", "Gemelos", "Espalda Baja"):
+            axis_map[tid] = "Piernas"
+        elif mg in ("Core", "Agarre", "Posterior"):
+            axis_map[tid] = "Core & Grip"
+        # Biceps/Triceps not key axes
+
+    axes = ["Empuje Vertical", "Empuje Horizontal", "Tracción", "Piernas", "Core & Grip"]
+    profile = {}
+
+    for axis in axes:
+        tids = [tid for tid, a in axis_map.items() if a == axis]
+        ax_df = data[data["exercise_template_id"].isin(tids)]
+        if ax_df.empty or ax_df["e1rm"].max() <= 0:
+            profile[axis] = 0
+            continue
+        # Score = best e1RM / bodyweight, normalized to 0-100 scale
+        # Using approximate ceilings: 3xBW legs, 2xBW pull, 1.5xBW push, 1xBW core
+        ceilings = {
+            "Empuje Vertical": 1.25,
+            "Empuje Horizontal": 2.0,
+            "Tracción": 2.0,
+            "Piernas": 3.0,
+            "Core & Grip": 1.0,
+        }
+        best_ratio = ax_df["e1rm"].max() / BODYWEIGHT
+        ceiling = ceilings.get(axis, 2.0)
+        score = min(100, round(best_ratio / ceiling * 100))
+        profile[axis] = score
+
+    return profile
+
+
+def historical_comparison(df: pd.DataFrame, weeks_ago: int = 4) -> dict:
+    """
+    Compare current metrics vs X weeks ago.
+    Returns dict with per-exercise and aggregate comparisons.
+    """
+    if df.empty:
+        return {}
+
+    current_week = calc_week(pd.Timestamp(datetime.now().date()))
+    compare_week = max(1, current_week - weeks_ago)
+
+    # Only meaningful if we have data in both periods
+    current_data = df[df["week"] >= current_week - 1]  # last 2 weeks as "current"
+    past_data = df[df["week"] <= compare_week]
+
+    if current_data.empty or past_data.empty:
+        return {"error": "Datos insuficientes para comparar"}
+
+    # Aggregate comparisons
+    now_vol = current_data.groupby("week")["volume_kg"].sum().mean()
+    then_vol = past_data.groupby("week")["volume_kg"].sum().mean()
+
+    # Per-exercise e1RM comparison
+    exercise_deltas = []
+    for exercise in df["exercise"].unique():
+        now_ex = current_data[current_data["exercise"] == exercise]
+        then_ex = past_data[past_data["exercise"] == exercise]
+        if now_ex.empty or then_ex.empty:
+            continue
+        now_e1rm = now_ex["e1rm"].max()
+        then_e1rm = then_ex["e1rm"].max()
+        if then_e1rm <= 0:
+            continue
+        delta_pct = round((now_e1rm - then_e1rm) / then_e1rm * 100, 1)
+        exercise_deltas.append({
+            "exercise": exercise,
+            "e1rm_now": round(now_e1rm, 1),
+            "e1rm_then": round(then_e1rm, 1),
+            "delta_kg": round(now_e1rm - then_e1rm, 1),
+            "delta_pct": delta_pct,
+            "trend": "📈" if delta_pct > 2 else "📉" if delta_pct < -2 else "➡️",
+        })
+
+    # Strength profiles for radar
+    profile_now = strength_profile(df, as_of_week=current_week)
+    profile_then = strength_profile(df, as_of_week=compare_week)
+
+    return {
+        "weeks_ago": weeks_ago,
+        "current_week": current_week,
+        "compare_week": compare_week,
+        "volume_now": round(now_vol),
+        "volume_then": round(then_vol),
+        "volume_delta_pct": round((now_vol - then_vol) / then_vol * 100, 1) if then_vol > 0 else 0,
+        "exercise_deltas": sorted(exercise_deltas, key=lambda x: x["delta_pct"], reverse=True),
+        "profile_now": profile_now,
+        "profile_then": profile_then,
+    }

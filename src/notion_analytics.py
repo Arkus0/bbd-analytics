@@ -20,6 +20,8 @@ from src.analytics import (
     bbd_ratios, estimate_dl_1rm, dominadas_progress,
     intra_session_fatigue, session_density, strength_standards,
     key_lifts_progression, calc_week,
+    # Phase 1
+    plateau_detection, acwr, mesocycle_summary, strength_profile,
 )
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
@@ -526,6 +528,111 @@ def build_analytics_blocks(df: pd.DataFrame) -> list[dict]:
         f"DL e1RM estimado: ~{dl_1rm:.0f} kg. "
         "Se actualizará cuando registres Peso Muerto directo."
     ))
+
+    blocks.append(divider())
+
+    # ── 14. Plateau Detection — Phase 1 ──
+    blocks.append(heading1("🔴 Detección de Estancamiento"))
+    plateaus = plateau_detection(df)
+    if not plateaus.empty:
+        stuck = (plateaus["status"].str.contains("Estancado")).sum()
+        watch = (plateaus["status"].str.contains("Vigilar")).sum()
+        blocks.append(paragraph(
+            f"Resumen: ",
+            (f"{stuck} estancados", True),
+            f" · {watch} a vigilar · ",
+            (f"{len(plateaus) - stuck - watch} progresando", True),
+        ))
+        rows = []
+        for _, p in plateaus.iterrows():
+            rows.append([
+                p["exercise"][:30], f"{p['pr_e1rm']:.1f}", f"{p['last_e1rm']:.1f}",
+                f"{p['pct_of_pr']:.0f}%", str(p["weeks_since_pr"]),
+                f"{p['trend_slope']:+.2f}", p["status"],
+            ])
+        blocks.append(table(
+            ["Ejercicio", "PR e1RM", "Último e1RM", "% PR", "Sem sin PR", "Tendencia", "Estado"],
+            rows,
+        ))
+        stale = plateaus[plateaus["status"].str.contains("Estancado")]
+        if not stale.empty:
+            blocks.append(callout([
+                "⚠️ Estancados: ",
+                (", ".join(f"{r['exercise']} ({r['weeks_since_pr']} sem)" for _, r in stale.iterrows()), True),
+                " — Considera variar reps/series, deload, o cambiar variante.",
+            ], "⚠️"))
+    else:
+        blocks.append(paragraph("Se necesitan ≥2 semanas de datos por ejercicio para detectar estancamientos."))
+    blocks.append(divider())
+
+    # ── 15. ACWR — Phase 1 ──
+    blocks.append(heading1("⚖️ ACWR — Carga Aguda/Crónica"))
+    acwr_df = acwr(df)
+    if not acwr_df.empty and not acwr_df["acwr"].isna().all():
+        valid = acwr_df.dropna(subset=["acwr"])
+        if not valid.empty:
+            latest = valid.iloc[-1]
+            blocks.append(callout([
+                f"Semana {int(latest['week'])}: ACWR = ",
+                (f"{latest['acwr']:.2f}", True),
+                f" → {latest['acwr_zone']}",
+            ], "⚖️"))
+            rows = []
+            for _, a in valid.iterrows():
+                chronic_str = f"{a['chronic_volume']:,.0f}" if pd.notna(a["chronic_volume"]) else "—"
+                rows.append([
+                    str(int(a["week"])), f"{a['acute_volume']:,.0f}", chronic_str,
+                    f"{a['acwr']:.2f}", a["acwr_zone"], str(int(a["sessions"])),
+                ])
+            blocks.append(table(
+                ["Sem", "Vol. Agudo", "Vol. Crónico", "ACWR", "Zona", "Sesiones"],
+                rows,
+            ))
+    else:
+        blocks.append(paragraph("Se necesitan al menos 2 semanas para calcular ACWR."))
+    blocks.append(paragraph("Zonas: 🔵 <0.8 detraining | 🟢 0.8-1.3 segura | 🟡 1.3-1.5 overreaching | 🔴 >1.5 riesgo"))
+    blocks.append(divider())
+
+    # ── 16. Mesocycles — Phase 1 ──
+    blocks.append(heading1("📦 Mesociclos — Bloques de 4 Semanas"))
+    meso = mesocycle_summary(df)
+    if not meso.empty:
+        rows = []
+        for _, m in meso.iterrows():
+            vol_delta = f"{m['vol_delta_pct']:+.1f}%" if pd.notna(m["vol_delta_pct"]) else "—"
+            fat_str = f"{m['avg_fatigue']:.1f}%" if pd.notna(m["avg_fatigue"]) else "—"
+            dens_str = f"{m['avg_density']:.0f}" if pd.notna(m["avg_density"]) else "—"
+            rows.append([
+                f"Meso {int(m['mesocycle'])}",
+                f"Sem {int(m['week_start'])}–{int(m['week_end'])}",
+                str(int(m["total_sessions"])),
+                f"{m['avg_weekly_volume']:,.0f} kg",
+                vol_delta, f"{m['avg_e1rm']:.1f} kg",
+                fat_str, dens_str,
+            ])
+        blocks.append(table(
+            ["Mesociclo", "Semanas", "Sesiones", "Vol/sem", "Δ Vol", "e1RM med.", "Fatiga", "Densidad"],
+            rows,
+        ))
+    else:
+        blocks.append(paragraph("Datos insuficientes para análisis de mesociclos."))
+    blocks.append(divider())
+
+    # ── 17. Strength Profile — Phase 1 ──
+    blocks.append(heading1("🕐 Perfil de Fuerza Actual"))
+    profile = strength_profile(df)
+    if profile:
+        rows = []
+        for axis, score in profile.items():
+            bar = "█" * (score // 10) + "░" * (10 - score // 10)
+            rows.append([axis, f"{score}/100", bar])
+        blocks.append(table(["Eje", "Puntuación", ""], rows))
+        blocks.append(paragraph(
+            "Ejes: Empuje Vertical · Empuje Horizontal · Tracción · Piernas · Core & Grip. "
+            "Score normalizado vs techo teórico (0-100)."
+        ))
+    else:
+        blocks.append(paragraph("Sin datos suficientes para el perfil de fuerza."))
 
     return blocks
 
