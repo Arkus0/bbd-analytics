@@ -26,8 +26,9 @@ from src.analytics import (
     # Gamification
     gamification_status,
 )
-from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN
+from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN, NOTION_HALL_OF_TITANS_DB
 import requests as _requests
+import re as _re
 
 # ── Page Config ──────────────────────────────────────────────────────
 st.set_page_config(page_title="BBD Analytics", page_icon="🔥", layout="wide", initial_sidebar_state="expanded")
@@ -51,6 +52,69 @@ def _notion_last_edit() -> pd.Timestamp | None:
             return pd.Timestamp(r.json()["last_edited_time"])
     except Exception:
         pass
+    return None
+
+
+@st.cache_data(ttl=300)
+def load_hall_of_titans() -> list[dict]:
+    """Fetch Hall of Titans entries from Notion database."""
+    token = NOTION_TOKEN or st.secrets.get("NOTION_TOKEN", "")
+    if not token or not NOTION_HALL_OF_TITANS_DB:
+        return []
+    try:
+        r = _requests.post(
+            f"https://api.notion.com/v1/databases/{NOTION_HALL_OF_TITANS_DB}/query",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Notion-Version": "2022-06-28",
+                "Content-Type": "application/json",
+            },
+            json={"sorts": [{"property": "Fecha", "direction": "descending"}]},
+            timeout=10,
+        )
+        if not r.ok:
+            return []
+        entries = []
+        for page in r.json().get("results", []):
+            props = page.get("properties", {})
+            title_parts = props.get("Lift", {}).get("title", [])
+            title = title_parts[0]["plain_text"] if title_parts else ""
+            url_obj = props.get("YouTube URL", {}).get("url")
+            peso = props.get("Peso (kg)", {}).get("number")
+            fecha_obj = props.get("Fecha", {}).get("date")
+            fecha = fecha_obj.get("start") if fecha_obj else None
+            ejercicio_obj = props.get("Ejercicio", {}).get("select")
+            ejercicio = ejercicio_obj.get("name") if ejercicio_obj else ""
+            epico_obj = props.get("Épico", {}).get("select")
+            epico = epico_obj.get("name") if epico_obj else ""
+            comment_parts = props.get("Comentario", {}).get("rich_text", [])
+            comentario = comment_parts[0]["plain_text"] if comment_parts else ""
+            bw_ratio_obj = props.get("×BW", {}).get("formula")
+            bw_ratio = bw_ratio_obj.get("number") if bw_ratio_obj else None
+
+            if url_obj:
+                entries.append({
+                    "title": title, "url": url_obj, "peso": peso,
+                    "fecha": fecha, "ejercicio": ejercicio, "epico": epico,
+                    "comentario": comentario, "bw_ratio": bw_ratio,
+                })
+        return entries
+    except Exception:
+        return []
+
+
+def _youtube_embed_url(url: str) -> str | None:
+    """Extract YouTube video ID and return embed URL."""
+    if not url:
+        return None
+    patterns = [
+        r"(?:youtu\.be/|youtube\.com/watch\?v=|youtube\.com/shorts/)([a-zA-Z0-9_-]{11})",
+        r"youtube\.com/embed/([a-zA-Z0-9_-]{11})",
+    ]
+    for pattern in patterns:
+        match = _re.search(pattern, url)
+        if match:
+            return f"https://www.youtube.com/embed/{match.group(1)}"
     return None
 
 st.markdown("""
@@ -130,6 +194,7 @@ with st.sidebar:
         "🏋️ Strength Standards",
         "🧠 Inteligencia",
         "🎮 Niveles",
+        "🏛️ Hall of Titans",
         "💪 Sesiones",
         "🏆 PRs",
         "🎯 Adherencia",
@@ -849,6 +914,117 @@ elif page == "🎮 Niveles":
             st.markdown(f"**→ Nivel {lvl} — {title}** ({xp_req} XP) — *siguiente*")
         else:
             st.caption(f"🔒 Nivel {lvl} — {title} ({xp_req} XP)")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 🏛️ HALL OF TITANS
+# ══════════════════════════════════════════════════════════════════════
+elif page == "🏛️ Hall of Titans":
+    st.markdown("## 🏛️ Hall of Titans")
+    st.caption("Levantamientos épicos inmortalizados. Solo los dignos entran aquí.")
+
+    titans = load_hall_of_titans()
+
+    if not titans:
+        st.markdown("""
+        <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid #2d3748; border-radius: 16px; padding: 40px; text-align: center;
+            margin: 20px 0;">
+            <div style="font-size: 4rem; margin-bottom: 12px;">⚔️</div>
+            <div style="font-size: 1.4rem; font-weight: 600; color: #f1f5f9;">
+                El Hall está vacío... por ahora
+            </div>
+            <div style="color: #94a3b8; margin-top: 12px; max-width: 500px; margin-left: auto; margin-right: auto;">
+                Cuando hagas un levantamiento digno de ser recordado, grábalo, súbelo a YouTube
+                (no listado) y añade una entrada en Notion.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        st.divider()
+        st.markdown("### 📱 Cómo añadir un vídeo")
+        st.markdown("""
+1. **Graba** el levantamiento con el móvil
+2. **Sube a YouTube** → Ajustes → Visibilidad: **No listado** → Publicar → Copia el enlace
+3. **Abre Notion** → Base de datos **🏛️ Hall of Titans** → **+ Nuevo**
+4. Rellena: **nombre** del lift, **YouTube URL**, **peso**, **ejercicio**, **tipo** (PR/Heavy/Grind...) y un **comentario** épico
+5. El vídeo aparecerá aquí automáticamente en el próximo refresco ⚡
+        """)
+        st.link_button("📝 Abrir Hall of Titans en Notion",
+                        "https://www.notion.so/34d213072fb14686910d35f3fec1062f",
+                        use_container_width=True)
+
+    else:
+        # Stats bar
+        total = len(titans)
+        prs = sum(1 for t in titans if "PR" in t.get("epico", ""))
+        heaviest = max((t["peso"] for t in titans if t.get("peso")), default=0)
+        c1, c2, c3 = st.columns(3)
+        c1.metric("⚔️ Hazañas", total)
+        c2.metric("🔥 PRs grabados", prs)
+        c3.metric("🏋️ Máximo registrado", f"{heaviest:.0f} kg" if heaviest else "—")
+
+        st.link_button("➕ Añadir levantamiento",
+                        "https://www.notion.so/34d213072fb14686910d35f3fec1062f",
+                        use_container_width=True)
+
+        st.divider()
+
+        # Video grid
+        for i in range(0, len(titans), 2):
+            cols = st.columns(2)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx >= len(titans):
+                    break
+                t = titans[idx]
+                with col:
+                    # Badge color
+                    badge_colors = {
+                        "🔥 PR": "#ef4444", "💪 Heavy": "#f59e0b",
+                        "🎯 Técnica": "#3b82f6", "😤 Grind": "#a855f7",
+                        "⭐ Hito": "#eab308",
+                    }
+                    badge_color = badge_colors.get(t["epico"], "#6b7280")
+
+                    # Header
+                    peso_str = f"{t['peso']:.0f}kg" if t.get("peso") else ""
+                    bw_str = f" ({t['bw_ratio']:.2f}×BW)" if t.get("bw_ratio") else ""
+                    fecha_str = t.get("fecha", "")
+
+                    st.markdown(f"""
+                    <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+                        border: 1px solid #2d3748; border-radius: 12px; padding: 16px; margin-bottom: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <span style="font-weight: 700; font-size: 1.1rem; color: #f1f5f9;">
+                                {t['title']}
+                            </span>
+                            <span style="background: {badge_color}; color: white; padding: 2px 10px;
+                                border-radius: 12px; font-size: 0.8rem; font-weight: 600;">
+                                {t['epico']}
+                            </span>
+                        </div>
+                        <div style="color: #94a3b8; font-size: 0.85rem; margin-bottom: 10px;">
+                            {t['ejercicio']} · {peso_str}{bw_str} · {fecha_str}
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                    # Embed YouTube video
+                    embed = _youtube_embed_url(t["url"])
+                    if embed:
+                        st.markdown(
+                            f'<iframe width="100%" height="280" src="{embed}" '
+                            f'frameborder="0" allow="accelerometer; autoplay; clipboard-write; '
+                            f'encrypted-media; gyroscope; picture-in-picture" '
+                            f'allowfullscreen style="border-radius: 8px;"></iframe>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        st.markdown(f"[🔗 Ver vídeo]({t['url']})")
+
+                    if t.get("comentario"):
+                        st.caption(f'💬 "{t["comentario"]}"')
 
 
 # ══════════════════════════════════════════════════════════════════════

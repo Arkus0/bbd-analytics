@@ -23,6 +23,9 @@ NOTION_ANALYTICS_PAGE = os.environ.get(
 NOTION_SEGUIMIENTO_DB = os.environ.get(
     "NOTION_SEGUIMIENTO_DB", "63970d73-50f7-451b-8aed-10418a9f9c42"
 )
+NOTION_HALL_OF_TITANS_DB = os.environ.get(
+    "NOTION_HALL_OF_TITANS_DB", "34d21307-2fb1-4686-910d-35f3fec1062f"
+)
 
 # ── Program Config ───────────────────────────────────────────────────
 PROGRAM_START = "2026-02-12"
