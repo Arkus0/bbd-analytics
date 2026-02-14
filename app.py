@@ -21,10 +21,32 @@ from src.analytics import (
     session_density, density_trend,
     strength_standards, dots_coefficient,
 )
-from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START
+from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN
+import requests as _requests
 
 # ── Page Config ──────────────────────────────────────────────────────
 st.set_page_config(page_title="BBD Analytics", page_icon="🔥", layout="wide", initial_sidebar_state="expanded")
+
+@st.cache_data(ttl=300)
+def _notion_last_edit() -> pd.Timestamp | None:
+    """Check when the Notion analytics page was last updated (= last successful cron)."""
+    try:
+        token = NOTION_TOKEN or st.secrets.get("NOTION_TOKEN", "")
+        if not token:
+            return None
+        r = _requests.get(
+            "https://api.notion.com/v1/pages/306cbc499cfe81b08aedce82d40289f6",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Notion-Version": "2022-06-28",
+            },
+            timeout=5,
+        )
+        if r.ok:
+            return pd.Timestamp(r.json()["last_edited_time"])
+    except Exception:
+        pass
+    return None
 
 st.markdown("""
 <style>
@@ -56,7 +78,6 @@ def load_data():
     df = add_derived_columns(df)
     return df, pd.Timestamp.now(tz="Europe/Madrid")
 
-# ── Data Loading ─────────────────────────────────────────────────────
 try:
     df, last_sync = load_data()
 except Exception as e:
@@ -77,6 +98,16 @@ with st.sidebar:
         st.caption("📡 Datos actualizados ahora")
     else:
         st.caption(f"📡 Última carga: hace {mins_ago} min")
+
+    # Cron health: check Notion analytics page last edit
+    notion_edit = _notion_last_edit()
+    if notion_edit is not None:
+        hours_since = (now - notion_edit.tz_convert("Europe/Madrid")).total_seconds() / 3600
+        if hours_since > 24:
+            st.error(f"⚠️ Notion sync hace {int(hours_since)}h — revisa GitHub Actions")
+        else:
+            st.caption(f"✅ Notion sync: hace {int(hours_since)}h")
+
     st.divider()
     page = st.radio("Sección", [
         "📊 Dashboard",
