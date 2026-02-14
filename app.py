@@ -59,7 +59,7 @@ def load_data():
 # ── Sidebar ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("# 🔥 BBD Analytics")
-    st.caption(f"Backed by Deadlifts — desde {PROGRAM_START.strftime('%d %b %Y')}")
+    st.caption(f"Backed by Deadlifts — desde {pd.Timestamp(PROGRAM_START).strftime('%d %b %Y')}")
     st.divider()
     if st.button("🔄 Actualizar datos", use_container_width=True):
         st.cache_data.clear()
