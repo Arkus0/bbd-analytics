@@ -119,7 +119,7 @@ if page == "📊 Dashboard":
                 textposition="outside",
             ))
             fig.update_layout(**PL, yaxis_title="Volumen (kg)", showlegend=False, height=350)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_1")
 
     with col_right:
         st.markdown("### Volumen por Músculo")
@@ -131,7 +131,7 @@ if page == "📊 Dashboard":
                          hole=0.45)
             fig.update_layout(**PL, height=350, showlegend=True)
             fig.update_traces(textposition="inside", textinfo="label+percent")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_2")
 
     # Density sparkline
     st.markdown("### ⚡ Densidad por Sesión (kg/min)")
@@ -145,7 +145,7 @@ if page == "📊 Dashboard":
             marker=dict(size=10),
         ))
         fig.update_layout(**PL, height=250, showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_3")
 
     # Targets
     st.markdown("### 🎯 vs Objetivos Semanales")
@@ -185,7 +185,7 @@ elif page == "📈 Progresión":
                     fig.add_trace(go.Scatter(x=prs_df["date"], y=prs_df["e1rm"], mode="markers",
                                              name="🏆 PR", marker=dict(color="#fbbf24", size=16, symbol="star")))
                 fig.update_layout(**PL, title=f"e1RM — {selected}", yaxis_title="e1RM (kg)", height=400)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="chart_4")
             with col2:
                 st.markdown("#### Historial")
                 disp = hist[["date", "max_weight", "max_reps_at_max", "e1rm", "is_pr"]].copy()
@@ -205,7 +205,7 @@ elif page == "📈 Progresión":
             fig.add_trace(go.Bar(x=wmv.index.map(lambda w: f"Sem {w}"), y=wmv[muscle],
                                   name=muscle, marker_color=color))
         fig.update_layout(**PL, barmode="stack", yaxis_title="Volumen (kg)", height=400)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_5")
 
     # Recovery
     st.markdown("### 🩺 Indicadores de Recuperación")
@@ -263,7 +263,7 @@ elif page == "🎯 Ratios BBD":
                     ))
                     fig.update_layout(height=200, margin=dict(l=20, r=20, t=20, b=20),
                                       paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#e2e8f0"))
-                    st.plotly_chart(fig, use_container_width=True)
+                    st.plotly_chart(fig, use_container_width=True, key=f'gauge_{row["label"]}')
                     st.caption(f"{row['current_weight']}kg · Rango: {row['target_low']}-{row['target_high']}%")
                     st.markdown(row["status"])
                 else:
@@ -333,7 +333,7 @@ elif page == "🔬 Fatiga Intra-sesión":
     fig.add_hline(y=10, line_dash="dot", line_color="#22c55e", annotation_text="Umbral estable (10%)")
     fig.add_hline(y=25, line_dash="dot", line_color="#ef4444", annotation_text="Umbral alto (25%)")
     fig.update_layout(**PL, height=350, showlegend=False, yaxis_title="Fatiga (%)")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="chart_7")
 
     # Rep curves
     st.markdown("### Curvas de Repeticiones")
@@ -350,7 +350,7 @@ elif page == "🔬 Fatiga Intra-sesión":
             fig.add_hline(y=reps[0], line_dash="dot", line_color="#4a5568",
                           annotation_text=f"Serie 1: {reps[0]} reps")
             fig.update_layout(**PL, height=200, xaxis_title="Serie #", yaxis_title="Reps", showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=f'fatigue_{row["exercise"]}_{row["date"]}')
 
     # Weekly fatigue trend
     ft = fatigue_trend(df)
@@ -363,7 +363,7 @@ elif page == "🔬 Fatiga Intra-sesión":
         fig.add_trace(go.Scatter(x=ft["week"].apply(lambda w: f"Sem {w}"), y=ft["max_fatigue"],
                                   mode="lines+markers", name="Máxima", line=dict(color="#ef4444", width=2, dash="dot")))
         fig.update_layout(**PL, height=300, yaxis_title="Fatiga (%)")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_9")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -398,7 +398,7 @@ elif page == "⚡ Densidad":
         textposition="outside",
     ))
     fig.update_layout(**PL, height=350, yaxis_title="kg/min", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="chart_10")
 
     # Breakdown table
     st.markdown("### Detalle")
@@ -460,7 +460,7 @@ elif page == "🏋️ Strength Standards":
     fig.add_hline(y=1.0, line_dash="dot", line_color="#4a5568", annotation_text="1×BW")
     fig.add_hline(y=2.0, line_dash="dot", line_color="#f59e0b", annotation_text="2×BW")
     fig.update_layout(**PL, height=350, yaxis_title="×BW", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True, key="chart_11")
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -555,7 +555,7 @@ elif page == "🎯 Adherencia":
                               marker_color="#22c55e", text=wk["sessions"], textposition="outside"))
         fig.add_hline(y=5, line_dash="dot", line_color="#ef4444", annotation_text="Objetivo: 5-6")
         fig.update_layout(**PL, height=300, yaxis_title="Sesiones", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_12")
 
 # ── Footer ───────────────────────────────────────────────────────────
 st.sidebar.divider()
