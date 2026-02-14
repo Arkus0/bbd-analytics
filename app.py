@@ -76,10 +76,17 @@ def load_data():
     workouts = fetch_bbd_workouts()
     df = workouts_to_dataframe(workouts)
     df = add_derived_columns(df)
-    return df, pd.Timestamp.now(tz="Europe/Madrid")
+    return {"df": df, "ts": pd.Timestamp.now(tz="Europe/Madrid")}
 
 try:
-    df, last_sync = load_data()
+    result = load_data()
+    if isinstance(result, dict):
+        df, last_sync = result["df"], result["ts"]
+    else:
+        # Stale cache from previous version — force refresh
+        st.cache_data.clear()
+        result = load_data()
+        df, last_sync = result["df"], result["ts"]
 except Exception as e:
     st.error(f"Error cargando datos: {e}")
     st.stop()
