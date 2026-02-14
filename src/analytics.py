@@ -561,6 +561,184 @@ def key_lifts_progression(df: pd.DataFrame) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# 15. GAMIFICATION — RPG Strength Levels
+# ═══════════════════════════════════════════════════════════════════════
+
+# Achievement definitions
+STRENGTH_ACHIEVEMENTS = [
+    # ── Deadlift milestones ──
+    {"id": "dl_1.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 1.5×BW", "desc": "Peso muerto a 1.5 veces tu peso corporal", "xp": 100,
+     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 1.5},
+    {"id": "dl_2x", "cat": "🏋️ Fuerza", "name": "Deadlift 2×BW", "desc": "Peso muerto a 2 veces tu peso corporal", "xp": 250,
+     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 2.0},
+    {"id": "dl_2.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 2.5×BW", "desc": "Peso muerto a 2.5 veces tu peso corporal", "xp": 500,
+     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 2.5},
+    {"id": "dl_3x", "cat": "🏋️ Fuerza", "name": "Deadlift 3×BW", "desc": "Peso muerto a 3 veces tu peso corporal — élite", "xp": 1000,
+     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 3.0},
+    # ── Bench milestones ──
+    {"id": "bench_1x", "cat": "🏋️ Fuerza", "name": "Bench 1×BW", "desc": "Press banca a 1 vez tu peso corporal", "xp": 150,
+     "lift_tid": "E644F828", "ratio": 1.0},
+    {"id": "bench_1.5x", "cat": "🏋️ Fuerza", "name": "Bench 1.5×BW", "desc": "Press banca a 1.5 veces tu peso corporal", "xp": 400,
+     "lift_tid": "E644F828", "ratio": 1.5},
+    {"id": "bench_2x", "cat": "🏋️ Fuerza", "name": "Bench 2×BW", "desc": "Press banca a 2 veces tu peso corporal — élite", "xp": 800,
+     "lift_tid": "E644F828", "ratio": 2.0},
+    # ── OHP milestones ──
+    {"id": "ohp_0.5x", "cat": "🏋️ Fuerza", "name": "OHP 0.5×BW", "desc": "Press militar a medio peso corporal", "xp": 75,
+     "lift_tid": "073032BB", "ratio": 0.5},
+    {"id": "ohp_0.75x", "cat": "🏋️ Fuerza", "name": "OHP 0.75×BW", "desc": "Press militar a 0.75 veces tu peso corporal", "xp": 200,
+     "lift_tid": "073032BB", "ratio": 0.75},
+    {"id": "ohp_1x", "cat": "🏋️ Fuerza", "name": "OHP 1×BW", "desc": "Press militar a tu peso corporal — hito legendario", "xp": 600,
+     "lift_tid": "073032BB", "ratio": 1.0},
+    # ── Front Squat milestones ──
+    {"id": "fsq_1x", "cat": "🏋️ Fuerza", "name": "Front Squat 1×BW", "desc": "Sentadilla frontal a tu peso corporal", "xp": 100,
+     "lift_tid": "5046D0A9", "ratio": 1.0},
+    {"id": "fsq_1.5x", "cat": "🏋️ Fuerza", "name": "Front Squat 1.5×BW", "desc": "Sentadilla frontal a 1.5 veces tu peso corporal", "xp": 300,
+     "lift_tid": "5046D0A9", "ratio": 1.5},
+    {"id": "fsq_2x", "cat": "🏋️ Fuerza", "name": "Front Squat 2×BW", "desc": "Sentadilla frontal a 2 veces tu peso corporal — élite", "xp": 700,
+     "lift_tid": "5046D0A9", "ratio": 2.0},
+    # ── Pendlay Row milestones ──
+    {"id": "row_1x", "cat": "🏋️ Fuerza", "name": "Pendlay Row 1×BW", "desc": "Remo Pendlay a tu peso corporal", "xp": 150,
+     "lift_tid": "018ADC12", "ratio": 1.0},
+    {"id": "row_1.25x", "cat": "🏋️ Fuerza", "name": "Pendlay Row 1.25×BW", "desc": "Remo Pendlay a 1.25 veces tu peso corporal", "xp": 350,
+     "lift_tid": "018ADC12", "ratio": 1.25},
+    {"id": "row_1.5x", "cat": "🏋️ Fuerza", "name": "Pendlay Row 1.5×BW", "desc": "Remo Pendlay a 1.5 veces tu peso corporal — élite", "xp": 600,
+     "lift_tid": "018ADC12", "ratio": 1.5},
+]
+
+VOLUME_ACHIEVEMENTS = [
+    {"id": "vol_50k", "cat": "📦 Volumen", "name": "50.000 kg", "desc": "Medio camión de volumen total", "xp": 50, "threshold": 50_000},
+    {"id": "vol_100k", "cat": "📦 Volumen", "name": "100.000 kg", "desc": "Un camión entero", "xp": 100, "threshold": 100_000},
+    {"id": "vol_250k", "cat": "📦 Volumen", "name": "250.000 kg", "desc": "Un cuarto de millón", "xp": 200, "threshold": 250_000},
+    {"id": "vol_500k", "cat": "📦 Volumen", "name": "500.000 kg", "desc": "Medio millón de kilos", "xp": 400, "threshold": 500_000},
+    {"id": "vol_1m", "cat": "📦 Volumen", "name": "1.000.000 kg", "desc": "Un millón de kilos — máquina", "xp": 800, "threshold": 1_000_000},
+]
+
+CONSISTENCY_ACHIEVEMENTS = [
+    {"id": "sess_10", "cat": "🔥 Consistencia", "name": "10 sesiones", "desc": "Primeras 10 sesiones completadas", "xp": 25, "threshold": 10},
+    {"id": "sess_25", "cat": "🔥 Consistencia", "name": "25 sesiones", "desc": "25 sesiones — ya es hábito", "xp": 75, "threshold": 25},
+    {"id": "sess_50", "cat": "🔥 Consistencia", "name": "50 sesiones", "desc": "50 sesiones — dedicación real", "xp": 150, "threshold": 50},
+    {"id": "sess_100", "cat": "🔥 Consistencia", "name": "100 sesiones", "desc": "100 sesiones — máquina imparable", "xp": 400, "threshold": 100},
+    {"id": "sess_200", "cat": "🔥 Consistencia", "name": "200 sesiones", "desc": "200 sesiones — leyenda", "xp": 800, "threshold": 200},
+]
+
+DOTS_ACHIEVEMENTS = [
+    {"id": "dots_200", "cat": "💎 DOTS", "name": "DOTS 200+", "desc": "Score DOTS compuesto superior a 200", "xp": 100, "threshold": 200},
+    {"id": "dots_300", "cat": "💎 DOTS", "name": "DOTS 300+", "desc": "Score DOTS compuesto superior a 300", "xp": 250, "threshold": 300},
+    {"id": "dots_400", "cat": "💎 DOTS", "name": "DOTS 400+", "desc": "Score DOTS compuesto superior a 400 — avanzado", "xp": 500, "threshold": 400},
+    {"id": "dots_500", "cat": "💎 DOTS", "name": "DOTS 500+", "desc": "Score DOTS compuesto superior a 500 — élite", "xp": 1000, "threshold": 500},
+]
+
+LEVEL_TABLE = [
+    (1, 0, "Novato"),
+    (2, 50, "Iniciado"),
+    (3, 125, "Aprendiz"),
+    (4, 225, "Guerrero"),
+    (5, 375, "Veterano"),
+    (6, 575, "Campeón"),
+    (7, 850, "Titán"),
+    (8, 1200, "Leyenda"),
+    (9, 1700, "Mítico"),
+    (10, 2500, "Inmortal"),
+]
+
+
+def _check_lift_achievement(ach: dict, df: pd.DataFrame, bodyweight: float) -> dict:
+    """Check a BW-ratio lift achievement."""
+    tid = ach["lift_tid"]
+    target_ratio = ach["ratio"]
+    target_kg = target_ratio * bodyweight
+
+    ex_df = df[df["exercise_template_id"] == tid]
+    if ex_df.empty or ex_df["e1rm"].max() <= 0:
+        return {**ach, "unlocked": False, "progress": 0.0, "current": "Sin datos", "target_kg": target_kg}
+
+    best = ex_df["e1rm"].max()
+    ratio = best / bodyweight
+    progress = min(1.0, ratio / target_ratio)
+
+    return {
+        **ach, "unlocked": ratio >= target_ratio, "progress": round(progress, 3),
+        "current": f"{best:.0f}kg ({ratio:.2f}×BW)", "target_kg": target_kg,
+    }
+
+
+def gamification_status(df: pd.DataFrame, bodyweight: float = 86.0) -> dict:
+    """
+    Calculate full RPG gamification status:
+    - All achievements with unlock status and progress
+    - Total XP and current level
+    - Next level info
+    """
+    if df.empty:
+        return {"level": 1, "title": "Novato", "xp": 0, "achievements": [], "unlocked": 0, "total": 0}
+
+    summary = global_summary(df)
+    total_volume = summary.get("total_volume", 0)
+    total_sessions = summary.get("total_sessions", 0)
+
+    # Composite DOTS
+    ss = strength_standards(df, bodyweight)
+    composite_dots = ss["dots_score"].sum() if not ss.empty else 0
+
+    achievements = []
+
+    # Strength
+    for ach in STRENGTH_ACHIEVEMENTS:
+        achievements.append(_check_lift_achievement(ach, df, bodyweight))
+
+    # Volume
+    for ach in VOLUME_ACHIEVEMENTS:
+        progress = min(1.0, total_volume / ach["threshold"])
+        achievements.append({
+            **ach, "unlocked": total_volume >= ach["threshold"],
+            "progress": round(progress, 3), "current": f"{total_volume:,} kg", "target_kg": ach["threshold"],
+        })
+
+    # Consistency
+    for ach in CONSISTENCY_ACHIEVEMENTS:
+        progress = min(1.0, total_sessions / ach["threshold"])
+        achievements.append({
+            **ach, "unlocked": total_sessions >= ach["threshold"],
+            "progress": round(progress, 3), "current": f"{total_sessions} sesiones", "target_kg": ach["threshold"],
+        })
+
+    # DOTS
+    for ach in DOTS_ACHIEVEMENTS:
+        progress = min(1.0, composite_dots / ach["threshold"]) if ach["threshold"] > 0 else 0
+        achievements.append({
+            **ach, "unlocked": composite_dots >= ach["threshold"],
+            "progress": round(progress, 3), "current": f"DOTS {composite_dots:.0f}", "target_kg": ach["threshold"],
+        })
+
+    # XP and level
+    total_xp = sum(a["xp"] for a in achievements if a["unlocked"])
+    unlocked_count = sum(1 for a in achievements if a["unlocked"])
+
+    level, title = 1, "Novato"
+    next_level_xp, next_title = LEVEL_TABLE[1][1], LEVEL_TABLE[1][2]
+    for lvl, xp_req, ttl in LEVEL_TABLE:
+        if total_xp >= xp_req:
+            level, title = lvl, ttl
+        else:
+            next_level_xp, next_title = xp_req, ttl
+            break
+    else:
+        next_level_xp, next_title = total_xp, title
+
+    current_floor = LEVEL_TABLE[level - 1][1]
+    level_range = next_level_xp - current_floor
+    level_progress = (total_xp - current_floor) / level_range if level_range > 0 and level < 10 else 1.0
+
+    return {
+        "level": level, "title": title, "xp": total_xp,
+        "xp_for_next": max(0, next_level_xp - total_xp),
+        "next_title": next_title, "level_progress": round(level_progress, 3),
+        "achievements": achievements, "unlocked": unlocked_count, "total": len(achievements),
+        "composite_dots": round(composite_dots, 1),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 11. PLATEAU DETECTION — Phase 1
 # ═══════════════════════════════════════════════════════════════════════
 

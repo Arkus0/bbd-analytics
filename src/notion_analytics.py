@@ -22,6 +22,8 @@ from src.analytics import (
     key_lifts_progression, calc_week,
     # Phase 1
     plateau_detection, acwr, mesocycle_summary, strength_profile,
+    # Gamification
+    gamification_status, LEVEL_TABLE,
 )
 
 NOTION_TOKEN = os.environ.get("NOTION_TOKEN", "")
@@ -633,6 +635,50 @@ def build_analytics_blocks(df: pd.DataFrame) -> list[dict]:
         ))
     else:
         blocks.append(paragraph("Sin datos suficientes para el perfil de fuerza."))
+
+    blocks.append(divider())
+
+    # ── 18. Gamification — RPG Levels ──
+    blocks.append(heading1("🎮 Niveles de Fuerza — RPG"))
+    gam = gamification_status(df, 86.0)
+    blocks.append(callout([
+        f"Nivel {gam['level']} — ",
+        (gam["title"], True),
+        f" | {gam['xp']} XP | {gam['unlocked']}/{gam['total']} logros",
+    ], "⚔️"))
+
+    if gam["level"] < 10:
+        blocks.append(paragraph(
+            f"Siguiente: Nivel {gam['level']+1} ({gam['next_title']}) — faltan {gam['xp_for_next']} XP"
+        ))
+
+    # Unlocked achievements
+    unlocked = [a for a in gam["achievements"] if a["unlocked"]]
+    locked_close = [a for a in gam["achievements"] if not a["unlocked"] and a["progress"] >= 0.5]
+
+    if unlocked:
+        blocks.append(heading3("✅ Logros Desbloqueados"))
+        rows = []
+        for a in unlocked:
+            rows.append([a["cat"], a["name"], f"+{a['xp']} XP", a["current"]])
+        blocks.append(table(["Categoría", "Logro", "XP", "Valor actual"], rows))
+
+    if locked_close:
+        blocks.append(heading3("🔓 Próximos Logros (>50% progreso)"))
+        rows = []
+        for a in sorted(locked_close, key=lambda x: x["progress"], reverse=True):
+            pct = int(a["progress"] * 100)
+            bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+            rows.append([a["cat"], a["name"], f"{pct}%", bar, a["current"]])
+        blocks.append(table(["Categoría", "Logro", "Progreso", "", "Actual"], rows))
+
+    # Level roadmap
+    blocks.append(heading3("🗺️ Roadmap"))
+    roadmap_rows = []
+    for lvl, xp_req, title in LEVEL_TABLE:
+        status = "✅" if lvl <= gam["level"] else "→" if lvl == gam["level"] + 1 else "🔒"
+        roadmap_rows.append([status, f"Nivel {lvl}", title, f"{xp_req} XP"])
+    blocks.append(table(["", "Nivel", "Título", "XP necesario"], roadmap_rows))
 
     return blocks
 

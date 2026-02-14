@@ -23,6 +23,8 @@ from src.analytics import (
     # v3 — Phase 1
     plateau_detection, acwr, mesocycle_summary, calc_mesocycle,
     strength_profile, historical_comparison,
+    # Gamification
+    gamification_status,
 )
 from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN
 import requests as _requests
@@ -127,6 +129,7 @@ with st.sidebar:
         "⚡ Densidad",
         "🏋️ Strength Standards",
         "🧠 Inteligencia",
+        "🎮 Niveles",
         "💪 Sesiones",
         "🏆 PRs",
         "🎯 Adherencia",
@@ -737,6 +740,108 @@ elif page == "🧠 Inteligencia":
                 st.plotly_chart(fig, use_container_width=True, key="radar_yo_vs_yo")
         else:
             st.info("No hay datos suficientes para la comparativa seleccionada.")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# 🎮 NIVELES — RPG Gamification
+# ══════════════════════════════════════════════════════════════════════
+elif page == "🎮 Niveles":
+    st.markdown("## 🎮 Niveles de Fuerza")
+    st.caption("Sistema RPG: desbloquea logros para ganar XP y subir de nivel.")
+
+    gam = gamification_status(df, BODYWEIGHT)
+
+    # ── Level banner ──
+    level_colors = {
+        1: "#6b7280", 2: "#6b7280", 3: "#22c55e", 4: "#22c55e",
+        5: "#3b82f6", 6: "#3b82f6", 7: "#a855f7", 8: "#f59e0b",
+        9: "#ef4444", 10: "#ef4444",
+    }
+    color = level_colors.get(gam["level"], "#6b7280")
+
+    st.markdown(f"""
+    <div style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        border: 2px solid {color}; border-radius: 16px; padding: 24px; text-align: center;
+        margin-bottom: 20px;">
+        <div style="font-size: 3.5rem; margin-bottom: 4px;">⚔️</div>
+        <div style="font-size: 2rem; font-weight: 700; color: {color};">
+            Nivel {gam['level']} — {gam['title']}
+        </div>
+        <div style="color: #94a3b8; margin-top: 8px;">
+            {gam['xp']} XP · {gam['unlocked']}/{gam['total']} logros desbloqueados
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # XP bar to next level
+    if gam["level"] < 10:
+        st.progress(min(gam["level_progress"], 1.0),
+                     text=f"→ Nivel {gam['level']+1} ({gam['next_title']}): faltan {gam['xp_for_next']} XP")
+    else:
+        st.progress(1.0, text="🏆 Nivel máximo alcanzado")
+
+    st.divider()
+
+    # ── Achievement categories ──
+    achievements = gam["achievements"]
+    categories = {}
+    for a in achievements:
+        categories.setdefault(a["cat"], []).append(a)
+
+    for cat_name, cat_achs in categories.items():
+        unlocked_in_cat = sum(1 for a in cat_achs if a["unlocked"])
+        st.markdown(f"### {cat_name}  ({unlocked_in_cat}/{len(cat_achs)})")
+
+        cols_per_row = 3
+        for i in range(0, len(cat_achs), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx >= len(cat_achs):
+                    break
+                a = cat_achs[idx]
+                with col:
+                    if a["unlocked"]:
+                        border_color = "#22c55e"
+                        icon = "✅"
+                        opacity = "1"
+                    else:
+                        border_color = "#2d3748"
+                        icon = "🔒"
+                        opacity = "0.6"
+
+                    pct = int(a["progress"] * 100)
+                    bar_w = min(pct, 100)
+
+                    st.markdown(f"""
+                    <div style="background: #1a1a2e; border: 1px solid {border_color};
+                        border-radius: 12px; padding: 14px; margin-bottom: 10px; opacity: {opacity};">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-weight: 600; color: #f1f5f9;">{icon} {a['name']}</span>
+                            <span style="color: #fbbf24; font-size: 0.8rem; font-weight: 600;">{a['xp']} XP</span>
+                        </div>
+                        <div style="color: #94a3b8; font-size: 0.8rem; margin: 6px 0;">{a['desc']}</div>
+                        <div style="background: #0f172a; border-radius: 4px; height: 8px; margin-top: 8px;">
+                            <div style="background: {border_color}; width: {bar_w}%; height: 100%;
+                                border-radius: 4px;"></div>
+                        </div>
+                        <div style="color: #64748b; font-size: 0.75rem; margin-top: 4px;">
+                            {a['current']} · {pct}%
+                        </div>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    # ── Level roadmap ──
+    st.divider()
+    st.markdown("### 🗺️ Roadmap de Niveles")
+    from src.analytics import LEVEL_TABLE
+    for lvl, xp_req, title in LEVEL_TABLE:
+        if lvl <= gam["level"]:
+            st.markdown(f"**✅ Nivel {lvl} — {title}** ({xp_req} XP)")
+        elif lvl == gam["level"] + 1:
+            st.markdown(f"**→ Nivel {lvl} — {title}** ({xp_req} XP) — *siguiente*")
+        else:
+            st.caption(f"🔒 Nivel {lvl} — {title} ({xp_req} XP)")
 
 
 # ══════════════════════════════════════════════════════════════════════
