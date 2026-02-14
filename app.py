@@ -21,7 +21,7 @@ from src.analytics import (
     session_density, density_trend,
     strength_standards, dots_coefficient,
 )
-from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, PROGRAM_START
+from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START
 
 # ── Page Config ──────────────────────────────────────────────────────
 st.set_page_config(page_title="BBD Analytics", page_icon="🔥", layout="wide", initial_sidebar_state="expanded")
@@ -163,7 +163,9 @@ if page == "📊 Dashboard":
 elif page == "📈 Progresión":
     st.markdown("## 📈 Progresión de Ejercicios Clave")
 
-    available = [l for l in KEY_LIFTS if l in df["exercise"].values]
+    # Match key lifts by template_id (language-independent)
+    key_df = df[df["exercise_template_id"].isin(KEY_LIFT_IDS)]
+    available = sorted(key_df["exercise"].unique().tolist()) if not key_df.empty else []
     if not available:
         available = sorted(df[df["e1rm"] > 0]["exercise"].unique())
 

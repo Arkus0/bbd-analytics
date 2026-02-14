@@ -378,3 +378,8 @@ WEEKLY_TARGETS = {
     "total_sets": (140, 170),
     "total_volume_kg": (70_000, 90_000),
 }
+
+
+# Derived: list of key lift template IDs and their names
+KEY_LIFT_IDS = get_key_lift_ids()
+KEY_LIFTS = [e["name"] for e in EXERCISE_DB.values() if e.get("is_key_lift")]
