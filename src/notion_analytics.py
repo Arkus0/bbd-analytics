@@ -3,10 +3,14 @@ BBD Notion Analytics Page Updater
 Generates all analytics and replaces the content of the BBD Analytics page.
 Uses Notion REST API (blocks endpoint).
 """
+import time
 import requests
 import os
 import pandas as pd
 from datetime import datetime
+
+# Notion API rate limit: 3 req/s
+RATE_LIMIT_DELAY = 0.35
 
 from src.config import NOTION_BBD_LOGBOOK_DB, DAY_CONFIG, PROGRAM_START
 from src.analytics import (
@@ -135,6 +139,7 @@ def _get_child_blocks(page_id: str) -> list[str]:
     block_ids = []
     url = f"{BASE}/blocks/{page_id}/children?page_size=100"
     while url:
+        time.sleep(RATE_LIMIT_DELAY)
         r = requests.get(url, headers=HEADERS)
         r.raise_for_status()
         data = r.json()
@@ -148,6 +153,7 @@ def _get_child_blocks(page_id: str) -> list[str]:
 
 
 def _delete_block(block_id: str):
+    time.sleep(RATE_LIMIT_DELAY)
     r = requests.delete(f"{BASE}/blocks/{block_id}", headers=HEADERS)
     # Ignore 404s (already deleted)
     if r.status_code not in (200, 404):
@@ -158,6 +164,7 @@ def _append_blocks(page_id: str, blocks: list[dict]):
     """Append blocks to a page. Batches in groups of 100."""
     for i in range(0, len(blocks), 100):
         batch = blocks[i : i + 100]
+        time.sleep(RATE_LIMIT_DELAY)
         r = requests.patch(
             f"{BASE}/blocks/{page_id}/children",
             headers=HEADERS,

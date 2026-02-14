@@ -2,9 +2,13 @@
 BBD Analytics — Notion API Client
 Direct REST API integration for automated sync (GitHub Actions).
 """
+import time
 import requests
 import pandas as pd
 from src.config import NOTION_TOKEN, NOTION_BBD_LOGBOOK_DB
+
+# Notion API rate limit: 3 req/s → sleep 0.35s between calls
+RATE_LIMIT_DELAY = 0.35
 
 
 BASE_URL = "https://api.notion.com/v1"
@@ -16,6 +20,7 @@ HEADERS = {
 
 
 def _post(endpoint: str, body: dict) -> dict:
+    time.sleep(RATE_LIMIT_DELAY)
     r = requests.post(f"{BASE_URL}{endpoint}", headers=HEADERS, json=body)
     r.raise_for_status()
     return r.json()

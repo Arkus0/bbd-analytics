@@ -54,7 +54,14 @@ def load_data():
     workouts = fetch_bbd_workouts()
     df = workouts_to_dataframe(workouts)
     df = add_derived_columns(df)
-    return df
+    return df, pd.Timestamp.now(tz="Europe/Madrid")
+
+# ── Data Loading ─────────────────────────────────────────────────────
+try:
+    df, last_sync = load_data()
+except Exception as e:
+    st.error(f"Error cargando datos: {e}")
+    st.stop()
 
 # ── Sidebar ──────────────────────────────────────────────────────────
 with st.sidebar:
@@ -64,6 +71,12 @@ with st.sidebar:
     if st.button("🔄 Actualizar datos", use_container_width=True):
         st.cache_data.clear()
         st.rerun()
+    now = pd.Timestamp.now(tz="Europe/Madrid")
+    mins_ago = int((now - last_sync).total_seconds() // 60)
+    if mins_ago < 1:
+        st.caption("📡 Datos actualizados ahora")
+    else:
+        st.caption(f"📡 Última carga: hace {mins_ago} min")
     st.divider()
     page = st.radio("Sección", [
         "📊 Dashboard",
@@ -76,12 +89,6 @@ with st.sidebar:
         "🏆 PRs",
         "🎯 Adherencia",
     ], label_visibility="collapsed")
-
-try:
-    df = load_data()
-except Exception as e:
-    st.error(f"Error cargando datos: {e}")
-    st.stop()
 
 if df.empty:
     st.warning("No hay entrenamientos BBD registrados.")
