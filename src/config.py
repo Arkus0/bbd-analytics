@@ -57,7 +57,7 @@ EXERCISE_DB = {
         "muscle_group": "Espalda Baja",
         "is_key_lift": True,
         "is_compound": True,
-        "strength_std": {"int": 1.75, "adv": 2.5, "elite": 3.0},
+        "strength_std": {"int": 1.05, "adv": 1.5, "elite": 1.8},  # PMR ≈ 60% of conventional DL
     },
     "d2c10c97-2d54-4159-abd3-a46404710d65": {
         "name": "Reverse Deadlift (Bob Peoples)",

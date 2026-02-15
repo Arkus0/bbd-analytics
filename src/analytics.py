@@ -193,13 +193,29 @@ def weekly_muscle_volume(df: pd.DataFrame) -> pd.DataFrame:
 # 4. RELATIVE INTENSITY & BBD RATIOS — uses template_id
 # ═══════════════════════════════════════════════════════════════════════
 
-def estimate_dl_1rm(df: pd.DataFrame) -> float:
-    """Estimate deadlift 1RM from actual DL data or Shrug fallback."""
-    # Direct deadlift data
+def _program_dl_e1rm(df: pd.DataFrame) -> float:
+    """Get raw e1RM from the program's deadlift variant (PMR). No conversion."""
     dl_df = df[df["exercise_template_id"] == DEADLIFT_TEMPLATE_ID]
     if not dl_df.empty and dl_df["e1rm"].max() > 0:
         return float(dl_df["e1rm"].max())
-    # Fallback: estimate from shrug (~92.5% of DL)
+    # Fallback: shrug-based PMR estimate (~92.5% of PMR)
+    shrug_df = df[df["exercise_template_id"] == SHRUG_TEMPLATE_ID]
+    if not shrug_df.empty and shrug_df["e1rm"].max() > 0:
+        return round(shrug_df["e1rm"].max() / 0.925 * 0.60, 1)
+    return 0.0
+
+
+def estimate_dl_1rm(df: pd.DataFrame) -> float:
+    """Estimate conventional deadlift 1RM.
+    
+    Primary lift is Peso Muerto Rumano (PMR), which is ~60% of conventional DL.
+    So: conventional DL 1RM ≈ PMR e1RM / 0.60
+    Fallback: estimate from shrug (~92.5% of conventional DL).
+    """
+    pmr = _program_dl_e1rm(df)
+    if pmr > 0:
+        return round(pmr / 0.60, 1)
+    # Fallback: estimate from shrug (~92.5% of conventional DL)
     shrug_df = df[df["exercise_template_id"] == SHRUG_TEMPLATE_ID]
     if not shrug_df.empty and shrug_df["e1rm"].max() > 0:
         return round(shrug_df["e1rm"].max() / 0.925, 1)
@@ -210,7 +226,7 @@ def relative_intensity(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     df = df.copy()
-    dl_1rm = estimate_dl_1rm(df)
+    dl_1rm = _program_dl_e1rm(df)  # Raw PMR e1RM for program-relative %
     ex_max = df.groupby("exercise")["e1rm"].transform("max")
     df["pct_of_pr"] = np.where(ex_max > 0, (df["e1rm"] / ex_max * 100).round(1), 0)
     df["dl_1rm_est"] = dl_1rm
@@ -219,8 +235,8 @@ def relative_intensity(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def bbd_ratios(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate BBD exercise ratios vs estimated DL 1RM — uses template_id."""
-    dl_1rm = estimate_dl_1rm(df)
+    """Calculate BBD exercise ratios vs program DL (PMR) e1RM — uses template_id."""
+    dl_1rm = _program_dl_e1rm(df)  # Raw PMR e1RM, NOT conventional estimate
     if dl_1rm == 0:
         return pd.DataFrame()
     
@@ -566,15 +582,15 @@ def key_lifts_progression(df: pd.DataFrame) -> dict:
 
 # Achievement definitions
 STRENGTH_ACHIEVEMENTS = [
-    # ── Deadlift milestones ──
-    {"id": "dl_1.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 1.5×BW", "desc": "Peso muerto a 1.5 veces tu peso corporal", "xp": 100,
-     "lift_tid": "2B4B7310", "ratio": 1.5},
-    {"id": "dl_2x", "cat": "🏋️ Fuerza", "name": "Deadlift 2×BW", "desc": "Peso muerto a 2 veces tu peso corporal", "xp": 250,
-     "lift_tid": "2B4B7310", "ratio": 2.0},
-    {"id": "dl_2.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 2.5×BW", "desc": "Peso muerto a 2.5 veces tu peso corporal", "xp": 500,
-     "lift_tid": "2B4B7310", "ratio": 2.5},
-    {"id": "dl_3x", "cat": "🏋️ Fuerza", "name": "Deadlift 3×BW", "desc": "Peso muerto a 3 veces tu peso corporal — élite", "xp": 1000,
-     "lift_tid": "2B4B7310", "ratio": 3.0},
+    # ── Deadlift milestones (conventional DL equivalent, estimated from PMR ÷ 0.60) ──
+    {"id": "dl_1.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 1.5×BW", "desc": "Peso muerto convencional equivalente a 1.5×BW", "xp": 100,
+     "lift_tid": "2B4B7310", "ratio": 1.5, "conv_factor": 0.60},
+    {"id": "dl_2x", "cat": "🏋️ Fuerza", "name": "Deadlift 2×BW", "desc": "Peso muerto convencional equivalente a 2×BW", "xp": 250,
+     "lift_tid": "2B4B7310", "ratio": 2.0, "conv_factor": 0.60},
+    {"id": "dl_2.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 2.5×BW", "desc": "Peso muerto convencional equivalente a 2.5×BW", "xp": 500,
+     "lift_tid": "2B4B7310", "ratio": 2.5, "conv_factor": 0.60},
+    {"id": "dl_3x", "cat": "🏋️ Fuerza", "name": "Deadlift 3×BW", "desc": "Peso muerto convencional equivalente a 3×BW — élite", "xp": 1000,
+     "lift_tid": "2B4B7310", "ratio": 3.0, "conv_factor": 0.60},
     # ── Bench milestones ──
     {"id": "bench_1x", "cat": "🏋️ Fuerza", "name": "Bench 1×BW", "desc": "Press banca a 1 vez tu peso corporal", "xp": 150,
      "lift_tid": "E644F828", "ratio": 1.0},
@@ -643,22 +659,32 @@ LEVEL_TABLE = [
 
 
 def _check_lift_achievement(ach: dict, df: pd.DataFrame, bodyweight: float) -> dict:
-    """Check a BW-ratio lift achievement."""
+    """Check a BW-ratio lift achievement.
+    
+    If conv_factor is present (e.g. 0.60 for PMR→conventional DL),
+    the raw e1RM is divided by conv_factor to estimate the conventional equivalent.
+    """
     tid = ach["lift_tid"]
     target_ratio = ach["ratio"]
+    conv_factor = ach.get("conv_factor", 1.0)  # 1.0 = no conversion
     target_kg = target_ratio * bodyweight
 
     ex_df = df[df["exercise_template_id"] == tid]
     if ex_df.empty or ex_df["e1rm"].max() <= 0:
         return {**ach, "unlocked": False, "progress": 0.0, "current": "Sin datos", "target_kg": target_kg}
 
-    best = ex_df["e1rm"].max()
-    ratio = best / bodyweight
+    raw_e1rm = ex_df["e1rm"].max()
+    estimated_e1rm = raw_e1rm / conv_factor  # Convert to conventional equivalent
+    ratio = estimated_e1rm / bodyweight
     progress = min(1.0, ratio / target_ratio)
+
+    label = f"{estimated_e1rm:.0f}kg ({ratio:.2f}×BW)"
+    if conv_factor != 1.0:
+        label = f"{raw_e1rm:.0f}kg PMR → ~{estimated_e1rm:.0f}kg conv ({ratio:.2f}×BW)"
 
     return {
         **ach, "unlocked": ratio >= target_ratio, "progress": round(progress, 3),
-        "current": f"{best:.0f}kg ({ratio:.2f}×BW)", "target_kg": target_kg,
+        "current": label, "target_kg": target_kg,
     }
 
 
