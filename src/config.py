@@ -51,13 +51,20 @@ DAY_CONFIG = {
 
 EXERCISE_DB = {
     # ── Day 1 — Deadlift + Legs ─────────────────────────────────────
-    "d2c10c97-2d54-4159-abd3-a46404710d65": {
-        "name": "Reverse Deadlift (Bob Peoples)",
+    "2B4B7310": {
+        "name": "Peso Muerto Rumano (Barra)",
         "day": 1,
         "muscle_group": "Espalda Baja",
         "is_key_lift": True,
         "is_compound": True,
         "strength_std": {"int": 1.75, "adv": 2.5, "elite": 3.0},
+    },
+    "d2c10c97-2d54-4159-abd3-a46404710d65": {
+        "name": "Reverse Deadlift (Bob Peoples)",
+        "day": 1,
+        "muscle_group": "Espalda Baja",
+        "is_key_lift": False,
+        "is_compound": True,
     },
     "70D4EBBF": {
         "name": "Jump Squat",
@@ -353,7 +360,7 @@ def get_bbd_ratios() -> dict:
 
 
 # Deadlift reference exercise
-DEADLIFT_TEMPLATE_ID = "d2c10c97-2d54-4159-abd3-a46404710d65"
+DEADLIFT_TEMPLATE_ID = "2B4B7310"
 SHRUG_TEMPLATE_ID = "0B841777"
 PULLUP_TEMPLATE_ID = "1B2B1E7C"
 

@@ -568,13 +568,13 @@ def key_lifts_progression(df: pd.DataFrame) -> dict:
 STRENGTH_ACHIEVEMENTS = [
     # ── Deadlift milestones ──
     {"id": "dl_1.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 1.5×BW", "desc": "Peso muerto a 1.5 veces tu peso corporal", "xp": 100,
-     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 1.5},
+     "lift_tid": "2B4B7310", "ratio": 1.5},
     {"id": "dl_2x", "cat": "🏋️ Fuerza", "name": "Deadlift 2×BW", "desc": "Peso muerto a 2 veces tu peso corporal", "xp": 250,
-     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 2.0},
+     "lift_tid": "2B4B7310", "ratio": 2.0},
     {"id": "dl_2.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 2.5×BW", "desc": "Peso muerto a 2.5 veces tu peso corporal", "xp": 500,
-     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 2.5},
+     "lift_tid": "2B4B7310", "ratio": 2.5},
     {"id": "dl_3x", "cat": "🏋️ Fuerza", "name": "Deadlift 3×BW", "desc": "Peso muerto a 3 veces tu peso corporal — élite", "xp": 1000,
-     "lift_tid": "d2c10c97-2d54-4159-abd3-a46404710d65", "ratio": 3.0},
+     "lift_tid": "2B4B7310", "ratio": 3.0},
     # ── Bench milestones ──
     {"id": "bench_1x", "cat": "🏋️ Fuerza", "name": "Bench 1×BW", "desc": "Press banca a 1 vez tu peso corporal", "xp": 150,
      "lift_tid": "E644F828", "ratio": 1.0},
