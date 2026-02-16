@@ -345,7 +345,7 @@ elif page == "🎯 Ratios BBD":
 
     dl_1rm = estimate_dl_1rm(df)
     st.metric("Deadlift 1RM estimado", f"{dl_1rm:.0f} kg",
-              help="Estimado del mejor e1RM en peso muerto, o inferido de Shrugs")
+              help="Peso en barra del PMR ÷ 0.60, o inferido de Shrugs")
 
     st.divider()
 

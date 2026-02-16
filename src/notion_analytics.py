@@ -362,7 +362,7 @@ def build_analytics_blocks(df: pd.DataFrame) -> list[dict]:
     blocks.append(heading1("🎯 Ratios BBD — Intensidad Relativa"))
     blocks.append(paragraph(
         f"DL 1RM estimado: ", (f"{dl_1rm:.0f} kg", True),
-        " (inferido de los mejores e1RM en deadlift o shrugs)"
+        " (peso en barra PMR ÷ 0.60, o inferido de shrugs)"
     ))
 
     ratios = bbd_ratios(df)
@@ -527,8 +527,7 @@ def build_analytics_blocks(df: pd.DataFrame) -> list[dict]:
 
     blocks.append(table(["Métrica", "Objetivo", "Actual", "Estado"], target_rows))
     blocks.append(paragraph(
-        f"DL e1RM estimado: ~{dl_1rm:.0f} kg. "
-        "Se actualizará cuando registres Peso Muerto directo."
+        f"DL conv. estimado: ~{dl_1rm:.0f} kg (peso en barra PMR ÷ 0.60)."
     ))
 
     blocks.append(divider())

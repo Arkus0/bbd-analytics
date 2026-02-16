@@ -208,13 +208,14 @@ def _program_dl_e1rm(df: pd.DataFrame) -> float:
 def estimate_dl_1rm(df: pd.DataFrame) -> float:
     """Estimate conventional deadlift 1RM.
     
-    Primary lift is Peso Muerto Rumano (PMR), which is ~60% of conventional DL.
-    So: conventional DL 1RM ≈ PMR e1RM / 0.60
+    The weight loaded on the bar for PMR IS 60% of conventional DL 1RM,
+    regardless of how many reps are performed with it.
+    So: conventional DL 1RM ≈ PMR bar weight / 0.60
     Fallback: estimate from shrug (~92.5% of conventional DL).
     """
-    pmr = _program_dl_e1rm(df)
-    if pmr > 0:
-        return round(pmr / 0.60, 1)
+    dl_df = df[df["exercise_template_id"] == DEADLIFT_TEMPLATE_ID]
+    if not dl_df.empty and dl_df["max_weight"].max() > 0:
+        return round(float(dl_df["max_weight"].max()) / 0.60, 1)
     # Fallback: estimate from shrug (~92.5% of conventional DL)
     shrug_df = df[df["exercise_template_id"] == SHRUG_TEMPLATE_ID]
     if not shrug_df.empty and shrug_df["e1rm"].max() > 0:
@@ -673,14 +674,18 @@ def _check_lift_achievement(ach: dict, df: pd.DataFrame, bodyweight: float) -> d
     if ex_df.empty or ex_df["e1rm"].max() <= 0:
         return {**ach, "unlocked": False, "progress": 0.0, "current": "Sin datos", "target_kg": target_kg}
 
-    raw_e1rm = ex_df["e1rm"].max()
-    estimated_e1rm = raw_e1rm / conv_factor  # Convert to conventional equivalent
-    ratio = estimated_e1rm / bodyweight
-    progress = min(1.0, ratio / target_ratio)
-
-    label = f"{estimated_e1rm:.0f}kg ({ratio:.2f}×BW)"
     if conv_factor != 1.0:
-        label = f"{raw_e1rm:.0f}kg PMR → ~{estimated_e1rm:.0f}kg conv ({ratio:.2f}×BW)"
+        # PMR: the bar weight IS the percentage of conventional DL 1RM
+        bar_weight = ex_df["max_weight"].max()
+        estimated_1rm = bar_weight / conv_factor
+        ratio = estimated_1rm / bodyweight
+        label = f"{bar_weight:.0f}kg PMR → ~{estimated_1rm:.0f}kg conv ({ratio:.2f}×BW)"
+    else:
+        estimated_1rm = ex_df["e1rm"].max()
+        ratio = estimated_1rm / bodyweight
+        label = f"{estimated_1rm:.0f}kg ({ratio:.2f}×BW)"
+
+    progress = min(1.0, ratio / target_ratio)
 
     return {
         **ach, "unlocked": ratio >= target_ratio, "progress": round(progress, 3),
