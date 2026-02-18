@@ -185,8 +185,8 @@ def build_analytics_blocks(df: pd.DataFrame) -> list[dict]:
     """Build all Notion blocks for the analytics page."""
     blocks = []
     now = datetime.now()
-    current_week = calc_week(pd.Timestamp(now.date()))
     summary = global_summary(df)
+    current_week = summary["current_week"]
 
     # ── Header ──
     blocks.append(paragraph(
@@ -297,7 +297,7 @@ def build_analytics_blocks(df: pd.DataFrame) -> list[dict]:
     sessions = session_summary(df)
     current_wk_num = 0
     for _, s in sessions.sort_values("date").iterrows():
-        wk_num = calc_week(s["date"])
+        wk_num = int(s["week"]) if "week" in s.index else int(s.get("week", 1))
         if wk_num != current_wk_num:
             blocks.append(heading2(f"Semana {wk_num}"))
             current_wk_num = wk_num
@@ -703,3 +703,4 @@ def update_analytics_page(df: pd.DataFrame):
     print(f"   Appending {len(blocks)} new blocks...")
     _append_blocks(ANALYTICS_PAGE_ID, blocks)
     print("   ✅ Analytics page updated!")
+
