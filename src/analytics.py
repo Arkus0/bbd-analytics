@@ -24,15 +24,58 @@ from src.config import (
 
 
 def calc_week(date: pd.Timestamp) -> int:
+    """Fallback: calendar-based week. Prefer build_week_map for cycle-aware calc."""
     delta = (date - pd.Timestamp(PROGRAM_START)).days
     return max(1, (delta // 7) + 1)
+
+
+def build_week_map(df: pd.DataFrame) -> dict:
+    """
+    Assign week numbers based on BBD day cycle, not calendar.
+
+    A new week starts whenever day_num resets lower than the previous session
+    (e.g., after Day 6 comes Day 1, or after any rest/skip the cycle restarts).
+    The first partial week (e.g., starting on Day 4) is Week 1.
+
+    Returns a dict mapping date -> week_number.
+    """
+    if df.empty or "day_num" not in df.columns:
+        return {}
+
+    # One row per unique training date with the day_num of that session
+    sessions = (
+        df.dropna(subset=["day_num"])
+        .drop_duplicates("date")[["date", "day_num"]]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+
+    week = 1
+    week_map = {}
+    prev_day = None
+
+    for _, row in sessions.iterrows():
+        day = row["day_num"]
+        date = row["date"]
+        # Cycle reset: current day is less than or equal to the previous day
+        # (only bump when it's not the very first session)
+        if prev_day is not None and day <= prev_day:
+            week += 1
+        week_map[date] = week
+        prev_day = day
+
+    return week_map
 
 
 def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     df = df.copy()
-    df["week"] = df["date"].apply(calc_week)
+    week_map = build_week_map(df)
+    if week_map:
+        df["week"] = df["date"].map(week_map).fillna(1).astype(int)
+    else:
+        df["week"] = df["date"].apply(calc_week)
     # ── KEY CHANGE: muscle group from template_id, not exercise name ──
     df["muscle_group"] = df["exercise_template_id"].map(get_muscle_group).fillna("Otro")
     df["day_color"] = df["day_num"].map(
@@ -62,7 +105,7 @@ def global_summary(df: pd.DataFrame) -> dict:
         "total_exercises_unique": df["exercise"].nunique(),
         "date_first": df["date"].min(),
         "date_last": df["date"].max(),
-        "current_week": calc_week(pd.Timestamp(datetime.now().date())),
+        "current_week": int(df["week"].max()) if "week" in df.columns else 1,
         "weeks_active": df["week"].nunique(),
         "days_completed": sorted(df["day_num"].dropna().unique().tolist()),
     }
@@ -540,11 +583,8 @@ def day_adherence(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def vs_targets(df: pd.DataFrame) -> list:
-    current_week = calc_week(pd.Timestamp(datetime.now().date()))
+    current_week = int(df["week"].max()) if not df.empty else 1
     wk_df = df[df["week"] == current_week]
-    if wk_df.empty and not df.empty:
-        current_week = df["week"].max()
-        wk_df = df[df["week"] == current_week]
     sessions = wk_df["hevy_id"].nunique()
     sets = int(wk_df["n_sets"].sum())
     volume = int(wk_df["volume_kg"].sum())
@@ -786,7 +826,7 @@ def plateau_detection(df: pd.DataFrame, stale_weeks: int = 3) -> pd.DataFrame:
     if weighted.empty:
         return pd.DataFrame()
 
-    current_week = calc_week(pd.Timestamp(datetime.now().date()))
+    current_week = int(df["week"].max()) if not df.empty else 1
     rows = []
 
     for exercise in weighted["exercise"].unique():
@@ -1063,7 +1103,7 @@ def historical_comparison(df: pd.DataFrame, weeks_ago: int = 4) -> dict:
     if df.empty:
         return {}
 
-    current_week = calc_week(pd.Timestamp(datetime.now().date()))
+    current_week = int(df["week"].max()) if not df.empty else 1
     compare_week = max(1, current_week - weeks_ago)
 
     # Only meaningful if we have data in both periods
@@ -1113,3 +1153,4 @@ def historical_comparison(df: pd.DataFrame, weeks_ago: int = 4) -> dict:
         "profile_now": profile_now,
         "profile_then": profile_then,
     }
+
