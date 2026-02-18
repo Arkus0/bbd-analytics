@@ -147,7 +147,7 @@ def session_summary(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return pd.DataFrame()
     return (
-        df.groupby(["hevy_id", "date", "workout_title", "day_name", "day_num", "duration_min", "description"])
+        df.groupby(["hevy_id", "date", "week", "workout_title", "day_name", "day_num", "duration_min", "description"])
         .agg(
             n_exercises=("exercise", "nunique"),
             total_sets=("n_sets", "sum"),
