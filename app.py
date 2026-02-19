@@ -140,7 +140,7 @@ PL = dict(
 BODYWEIGHT = 86.0  # kg — update from Seguimiento
 
 # ── Data Loading ─────────────────────────────────────────────────────
-_CODE_VERSION = "v2.3"  # bump to invalidate Streamlit cache on deploy
+_CODE_VERSION = "v2.4"  # bump to invalidate Streamlit cache on deploy
 
 @st.cache_data(ttl=300)
 def load_data(code_version=_CODE_VERSION):
@@ -216,32 +216,31 @@ if page == "📊 Dashboard":
     st.markdown("## 📊 Dashboard General")
 
     # ── Week selector ──
-    all_weeks = sorted(df["week"].unique().tolist())
-    current_week = summary["current_week"]
+    all_weeks = sorted(int(w) for w in df["week"].unique())
+    current_week = int(df["week"].max())
 
-    if len(all_weeks) >= 2:
-        sel_week = st.select_slider(
-            "📅 Semana", options=all_weeks, value=current_week,
-            format_func=lambda w: f"Sem {w}" + (" (actual)" if w == current_week else ""),
+    if len(all_weeks) > 1:
+        week_labels = [f"Sem {w}" for w in all_weeks]
+        default_idx = all_weeks.index(current_week) if current_week in all_weeks else len(all_weeks) - 1
+        chosen_label = st.radio(
+            "📅 Semana", week_labels, index=default_idx, horizontal=True,
         )
+        sel_week = all_weeks[week_labels.index(chosen_label)]
     else:
         sel_week = all_weeks[0] if all_weeks else 1
-        st.caption(f"📅 Semana {sel_week}")
 
     wk_df = df[df["week"] == sel_week]
-    wk_summary = {
-        "sessions": int(wk_df["hevy_id"].nunique()),
-        "volume": int(wk_df["volume_kg"].sum()),
-        "sets": int(wk_df["n_sets"].sum()),
-        "avg_dur": int(wk_df.groupby("hevy_id")["duration_min"].first().mean()) if not wk_df.empty else 0,
-    }
+    n_sess = int(wk_df["hevy_id"].nunique())
+    vol = int(wk_df["volume_kg"].sum())
+    sets = int(wk_df["n_sets"].sum())
+    dur_mean = int(wk_df.groupby("hevy_id")["duration_min"].first().mean()) if n_sess > 0 else 0
 
     dl_1rm = estimate_dl_1rm(df)
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Sesiones", wk_summary["sessions"])
-    c2.metric("Volumen", f"{wk_summary['volume']:,} kg")
-    c3.metric("Series", wk_summary["sets"])
-    c4.metric("Duración Media", f"{wk_summary['avg_dur']} min")
+    c1.metric("Sesiones", n_sess)
+    c2.metric("Volumen", f"{vol:,} kg")
+    c3.metric("Series", sets)
+    c4.metric("Duración Media", f"{dur_mean} min")
     c5.metric("Semana", f"{sel_week} / {current_week}")
     c6.metric("DL 1RM est.", f"{dl_1rm:.0f} kg")
 
@@ -252,10 +251,10 @@ if page == "📊 Dashboard":
         st.markdown("### Volumen Semanal")
         wk = weekly_breakdown(df)
         if not wk.empty:
-            colors = ["#ef4444" if w == sel_week else "#7f1d1d" for w in wk["week"]]
+            colors = ["#ef4444" if int(w) == sel_week else "#7f1d1d" for w in wk["week"]]
             fig = go.Figure()
             fig.add_trace(go.Bar(
-                x=wk["week"].apply(lambda w: f"Sem {w}"), y=wk["total_volume"],
+                x=wk["week"].apply(lambda w: f"Sem {int(w)}"), y=wk["total_volume"],
                 marker_color=colors, text=wk["total_volume"].apply(lambda v: f"{v:,.0f}"),
                 textposition="outside",
             ))
@@ -289,14 +288,10 @@ if page == "📊 Dashboard":
         st.plotly_chart(fig, use_container_width=True, key="chart_3")
 
     # Targets — selected week
-    st.markdown(f"### 🎯 vs Objetivos Semanales — Sem {sel_week}")
-    try:
-        targets = vs_targets(df, sel_week)
-    except TypeError:
-        # Fallback: old cached analytics.py without week param
-        targets = vs_targets(df[df["week"] == sel_week])
+    st.markdown(f"### 🎯 vs Objetivos — Sem {sel_week}")
+    wk_targets = vs_targets(wk_df)
     tc1, tc2, tc3 = st.columns(3)
-    for col, t in zip([tc1, tc2, tc3], targets):
+    for col, t in zip([tc1, tc2, tc3], wk_targets):
         pct = min(t["pct"], 100)
         status = "🟢" if pct >= 80 else "🟡" if pct >= 50 else "🔴"
         col.metric(f"{status} {t['metric']}", t["actual"], f"Obj: {t['target']}")

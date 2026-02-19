@@ -72,14 +72,31 @@ def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     df = df.copy()
-    week_map = build_week_map(df)
-    if week_map:
-        # String-based lookup — immune to Timestamp/tz mismatches
-        str_map = {str(k.date()): v for k, v in week_map.items()}
-        df["week"] = df["date"].apply(lambda d: str_map.get(str(d.date()), 1))
+
+    # ── Week assignment: directly on DataFrame, no dict mapping ──
+    # Get one row per session, sorted by date
+    sessions = (
+        df.dropna(subset=["day_num"])
+        .drop_duplicates("hevy_id")[["hevy_id", "date", "day_num"]]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+    week = 1
+    prev_day = None
+    hevy_week = {}  # hevy_id → week
+    for _, row in sessions.iterrows():
+        day = int(row["day_num"])
+        if prev_day is not None and day <= prev_day:
+            week += 1
+        hevy_week[row["hevy_id"]] = week
+        prev_day = day
+
+    if hevy_week:
+        df["week"] = df["hevy_id"].map(hevy_week).fillna(1).astype(int)
     else:
         df["week"] = df["date"].apply(calc_week)
-    # ── KEY CHANGE: muscle group from template_id, not exercise name ──
+
+    # ── muscle group from template_id, not exercise name ──
     df["muscle_group"] = df["exercise_template_id"].map(get_muscle_group).fillna("Otro")
     df["day_color"] = df["day_num"].map(
         lambda x: DAY_CONFIG.get(x, {}).get("color", "#666")
@@ -586,9 +603,10 @@ def day_adherence(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def vs_targets(df: pd.DataFrame, week: int = None) -> list:
-    if week is None:
-        week = int(df["week"].max()) if not df.empty else 1
-    wk_df = df[df["week"] == week]
+    if week is not None:
+        wk_df = df[df["week"] == week]
+    else:
+        wk_df = df
     sessions = wk_df["hevy_id"].nunique()
     sets = int(wk_df["n_sets"].sum())
     volume = int(wk_df["volume_kg"].sum())
