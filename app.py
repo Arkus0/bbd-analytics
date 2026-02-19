@@ -149,18 +149,27 @@ def load_raw_data():
 try:
     raw_df = load_raw_data()
     df = add_derived_columns(raw_df)
-    last_sync = pd.Timestamp.now(tz="Europe/Madrid")
 
-    # ── DEBUG (temporary) — will remove once weeks are confirmed working ──
-    _dbg_weeks = sorted(int(w) for w in df["week"].unique())
-    _dbg_sess = df.drop_duplicates("hevy_id")[["date", "workout_title", "day_num", "week"]].sort_values("date")
-    with st.expander(f"🔧 Debug: {len(_dbg_weeks)} semanas detectadas — {_dbg_weeks}", expanded=False):
-        st.dataframe(_dbg_sess, hide_index=True, use_container_width=True)
-        st.code(f"day_num dtype: {df['day_num'].dtype}\n"
-                f"day_num NaN: {df['day_num'].isna().sum()}/{len(df)}\n"
-                f"week dtype: {df['week'].dtype}\n"
-                f"raw_df columns: {list(raw_df.columns)}")
-    # ── END DEBUG ──
+    # ── Force week assignment here (cycle-aware, by hevy_id) ──
+    _sessions = (
+        df.dropna(subset=["day_num"])
+        .drop_duplicates("hevy_id")[["hevy_id", "date", "day_num"]]
+        .sort_values("date")
+        .reset_index(drop=True)
+    )
+    _week = 1
+    _prev_day = None
+    _hevy_week = {}
+    for _, _row in _sessions.iterrows():
+        _d = int(_row["day_num"])
+        if _prev_day is not None and _d <= _prev_day:
+            _week += 1
+        _hevy_week[_row["hevy_id"]] = _week
+        _prev_day = _d
+    if _hevy_week:
+        df["week"] = df["hevy_id"].map(_hevy_week).fillna(1).astype(int)
+
+    last_sync = pd.Timestamp.now(tz="Europe/Madrid")
 except Exception as e:
     st.error(f"Error cargando datos: {e}")
     st.stop()
