@@ -164,6 +164,18 @@ def _delete_block(block_id: str):
         r.raise_for_status()
 
 
+def _delete_blocks_fast(block_ids: list[str], workers: int = 3):
+    """Delete blocks concurrently (respects ~3 req/s rate limit)."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(_delete_block, bid): bid for bid in block_ids}
+        for f in as_completed(futures):
+            try:
+                f.result()
+            except Exception as e:
+                print(f"   ⚠️ Delete error for {futures[f]}: {e}")
+
+
 def _append_blocks(page_id: str, blocks: list[dict]):
     """Append blocks to a page. Batches in groups of 100."""
     for i in range(0, len(blocks), 100):
@@ -696,8 +708,7 @@ def update_analytics_page(df: pd.DataFrame):
     # 2. Delete existing content
     existing = _get_child_blocks(ANALYTICS_PAGE_ID)
     print(f"   Deleting {len(existing)} existing blocks...")
-    for bid in existing:
-        _delete_block(bid)
+    _delete_blocks_fast(existing)
 
     # 3. Append new content
     print(f"   Appending {len(blocks)} new blocks...")
