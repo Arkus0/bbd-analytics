@@ -74,8 +74,9 @@ def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     week_map = build_week_map(df)
     if week_map:
-        # Normalize dates for matching (strip tz/time components)
-        df["week"] = df["date"].apply(lambda d: pd.Timestamp(d.date())).map(week_map).fillna(1).astype(int)
+        # String-based lookup — immune to Timestamp/tz mismatches
+        str_map = {str(k.date()): v for k, v in week_map.items()}
+        df["week"] = df["date"].apply(lambda d: str_map.get(str(d.date()), 1))
     else:
         df["week"] = df["date"].apply(calc_week)
     # ── KEY CHANGE: muscle group from template_id, not exercise name ──

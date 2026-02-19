@@ -140,8 +140,10 @@ PL = dict(
 BODYWEIGHT = 86.0  # kg — update from Seguimiento
 
 # ── Data Loading ─────────────────────────────────────────────────────
+_CODE_VERSION = "v2.3"  # bump to invalidate Streamlit cache on deploy
+
 @st.cache_data(ttl=300)
-def load_data():
+def load_data(code_version=_CODE_VERSION):
     workouts = fetch_bbd_workouts()
     df = workouts_to_dataframe(workouts)
     df = add_derived_columns(df)
@@ -288,7 +290,11 @@ if page == "📊 Dashboard":
 
     # Targets — selected week
     st.markdown(f"### 🎯 vs Objetivos Semanales — Sem {sel_week}")
-    targets = vs_targets(df, week=sel_week)
+    try:
+        targets = vs_targets(df, sel_week)
+    except TypeError:
+        # Fallback: old cached analytics.py without week param
+        targets = vs_targets(df[df["week"] == sel_week])
     tc1, tc2, tc3 = st.columns(3)
     for col, t in zip([tc1, tc2, tc3], targets):
         pct = min(t["pct"], 100)
