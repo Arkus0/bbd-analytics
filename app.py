@@ -140,24 +140,16 @@ PL = dict(
 BODYWEIGHT = 86.0  # kg — update from Seguimiento
 
 # ── Data Loading ─────────────────────────────────────────────────────
-_CODE_VERSION = "v2.4"  # bump to invalidate Streamlit cache on deploy
-
 @st.cache_data(ttl=300)
-def load_data(code_version=_CODE_VERSION):
+def load_raw_data():
+    """Cache raw Hevy data only — derived columns computed fresh each time."""
     workouts = fetch_bbd_workouts()
-    df = workouts_to_dataframe(workouts)
-    df = add_derived_columns(df)
-    return {"df": df, "ts": pd.Timestamp.now(tz="Europe/Madrid")}
+    return workouts_to_dataframe(workouts)
 
 try:
-    result = load_data()
-    if isinstance(result, dict):
-        df, last_sync = result["df"], result["ts"]
-    else:
-        # Stale cache from previous version — force refresh
-        st.cache_data.clear()
-        result = load_data()
-        df, last_sync = result["df"], result["ts"]
+    raw_df = load_raw_data()
+    df = add_derived_columns(raw_df)
+    last_sync = pd.Timestamp.now(tz="Europe/Madrid")
 except Exception as e:
     st.error(f"Error cargando datos: {e}")
     st.stop()
@@ -215,19 +207,16 @@ summary = global_summary(df)
 if page == "📊 Dashboard":
     st.markdown("## 📊 Dashboard General")
 
-    # ── Week selector ──
+    # ── Week selector (always visible) ──
     all_weeks = sorted(int(w) for w in df["week"].unique())
-    current_week = int(df["week"].max())
+    current_week = max(all_weeks) if all_weeks else 1
 
-    if len(all_weeks) > 1:
-        week_labels = [f"Sem {w}" for w in all_weeks]
-        default_idx = all_weeks.index(current_week) if current_week in all_weeks else len(all_weeks) - 1
-        chosen_label = st.radio(
-            "📅 Semana", week_labels, index=default_idx, horizontal=True,
-        )
-        sel_week = all_weeks[week_labels.index(chosen_label)]
-    else:
-        sel_week = all_weeks[0] if all_weeks else 1
+    week_labels = [f"Sem {w}" for w in all_weeks]
+    default_idx = len(all_weeks) - 1  # last = current
+    chosen_label = st.radio(
+        "📅 Semana", week_labels, index=default_idx, horizontal=True,
+    )
+    sel_week = all_weeks[week_labels.index(chosen_label)]
 
     wk_df = df[df["week"] == sel_week]
     n_sess = int(wk_df["hevy_id"].nunique())
