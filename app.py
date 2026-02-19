@@ -213,13 +213,34 @@ summary = global_summary(df)
 if page == "📊 Dashboard":
     st.markdown("## 📊 Dashboard General")
 
+    # ── Week selector ──
+    all_weeks = sorted(df["week"].unique().tolist())
+    current_week = summary["current_week"]
+
+    if len(all_weeks) >= 2:
+        sel_week = st.select_slider(
+            "📅 Semana", options=all_weeks, value=current_week,
+            format_func=lambda w: f"Sem {w}" + (" (actual)" if w == current_week else ""),
+        )
+    else:
+        sel_week = all_weeks[0] if all_weeks else 1
+        st.caption(f"📅 Semana {sel_week}")
+
+    wk_df = df[df["week"] == sel_week]
+    wk_summary = {
+        "sessions": int(wk_df["hevy_id"].nunique()),
+        "volume": int(wk_df["volume_kg"].sum()),
+        "sets": int(wk_df["n_sets"].sum()),
+        "avg_dur": int(wk_df.groupby("hevy_id")["duration_min"].first().mean()) if not wk_df.empty else 0,
+    }
+
     dl_1rm = estimate_dl_1rm(df)
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    c1.metric("Sesiones", summary["total_sessions"])
-    c2.metric("Volumen Total", f"{summary['total_volume']:,} kg")
-    c3.metric("Series", summary["total_sets"])
-    c4.metric("Duración Media", f"{summary['avg_duration']} min")
-    c5.metric("Semana", summary["current_week"])
+    c1.metric("Sesiones", wk_summary["sessions"])
+    c2.metric("Volumen", f"{wk_summary['volume']:,} kg")
+    c3.metric("Series", wk_summary["sets"])
+    c4.metric("Duración Media", f"{wk_summary['avg_dur']} min")
+    c5.metric("Semana", f"{sel_week} / {current_week}")
     c6.metric("DL 1RM est.", f"{dl_1rm:.0f} kg")
 
     st.divider()
@@ -229,10 +250,11 @@ if page == "📊 Dashboard":
         st.markdown("### Volumen Semanal")
         wk = weekly_breakdown(df)
         if not wk.empty:
+            colors = ["#ef4444" if w == sel_week else "#7f1d1d" for w in wk["week"]]
             fig = go.Figure()
             fig.add_trace(go.Bar(
                 x=wk["week"].apply(lambda w: f"Sem {w}"), y=wk["total_volume"],
-                marker_color="#ef4444", text=wk["total_volume"].apply(lambda v: f"{v:,.0f}"),
+                marker_color=colors, text=wk["total_volume"].apply(lambda v: f"{v:,.0f}"),
                 textposition="outside",
             ))
             fig.update_layout(**PL, yaxis_title="Volumen (kg)", showlegend=False, height=350)
@@ -240,7 +262,7 @@ if page == "📊 Dashboard":
 
     with col_right:
         st.markdown("### Volumen por Músculo")
-        mv = muscle_volume(df)
+        mv = muscle_volume(wk_df)
         if not mv.empty:
             fig = px.pie(mv, values="total_volume", names="muscle_group",
                          color="muscle_group",
@@ -250,9 +272,9 @@ if page == "📊 Dashboard":
             fig.update_traces(textposition="inside", textinfo="label+percent")
             st.plotly_chart(fig, use_container_width=True, key="chart_2")
 
-    # Density sparkline
+    # Density sparkline — selected week
     st.markdown("### ⚡ Densidad por Sesión (kg/min)")
-    dens = session_density(df)
+    dens = session_density(wk_df)
     if not dens.empty:
         fig = go.Figure()
         fig.add_trace(go.Scatter(
@@ -264,9 +286,9 @@ if page == "📊 Dashboard":
         fig.update_layout(**PL, height=250, showlegend=False)
         st.plotly_chart(fig, use_container_width=True, key="chart_3")
 
-    # Targets
-    st.markdown("### 🎯 vs Objetivos Semanales")
-    targets = vs_targets(df)
+    # Targets — selected week
+    st.markdown(f"### 🎯 vs Objetivos Semanales — Sem {sel_week}")
+    targets = vs_targets(df, week=sel_week)
     tc1, tc2, tc3 = st.columns(3)
     for col, t in zip([tc1, tc2, tc3], targets):
         pct = min(t["pct"], 100)

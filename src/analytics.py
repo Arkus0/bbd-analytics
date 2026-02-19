@@ -56,7 +56,8 @@ def build_week_map(df: pd.DataFrame) -> dict:
 
     for _, row in sessions.iterrows():
         day = row["day_num"]
-        date = row["date"]
+        # Normalize to date-only Timestamp (strip tz and time)
+        date = pd.Timestamp(row["date"].date())
         # Cycle reset: current day is less than or equal to the previous day
         # (only bump when it's not the very first session)
         if prev_day is not None and day <= prev_day:
@@ -73,7 +74,8 @@ def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     week_map = build_week_map(df)
     if week_map:
-        df["week"] = df["date"].map(week_map).fillna(1).astype(int)
+        # Normalize dates for matching (strip tz/time components)
+        df["week"] = df["date"].apply(lambda d: pd.Timestamp(d.date())).map(week_map).fillna(1).astype(int)
     else:
         df["week"] = df["date"].apply(calc_week)
     # ── KEY CHANGE: muscle group from template_id, not exercise name ──
@@ -582,9 +584,10 @@ def day_adherence(df: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def vs_targets(df: pd.DataFrame) -> list:
-    current_week = int(df["week"].max()) if not df.empty else 1
-    wk_df = df[df["week"] == current_week]
+def vs_targets(df: pd.DataFrame, week: int = None) -> list:
+    if week is None:
+        week = int(df["week"].max()) if not df.empty else 1
+    wk_df = df[df["week"] == week]
     sessions = wk_df["hevy_id"].nunique()
     sets = int(wk_df["n_sets"].sum())
     volume = int(wk_df["volume_kg"].sum())
