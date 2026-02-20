@@ -193,8 +193,8 @@ def get_tm(lift: str) -> float | None:
 
 
 def round_to_plate(weight: float) -> float:
-    """Round weight to nearest 2.5kg (smallest standard plate)."""
-    return round(weight / 2.5) * 2.5
+    """Round weight to nearest 2kg (Juan's smallest increment: 1kg per side)."""
+    return round(weight / 2) * 2
 
 
 def expected_weights(lift: str, week: int) -> list[dict] | None:

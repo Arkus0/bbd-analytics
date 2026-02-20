@@ -605,13 +605,24 @@ def muscle_volume_531(df: pd.DataFrame) -> pd.DataFrame:
 # ═════════════════════════════════════════════════════════════════════
 
 BAR_WEIGHT = 20.0
-AVAILABLE_PLATES = [20, 15, 10, 5, 2.5, 1.25]  # per side, kg
+# Juan's actual plate inventory: (weight_kg, total_discs)
+# Per side = total_discs / 2
+PLATE_INVENTORY = [
+    (20, 4),   # 2 per side
+    (10, 2),   # 1 per side
+    (6, 4),    # 2 per side
+    (4, 4),    # 2 per side
+    (2, 4),    # 2 per side
+    (1, 4),    # 2 per side
+]
+PLATES_PER_SIDE = {w: total // 2 for w, total in PLATE_INVENTORY}
+AVAILABLE_PLATES = sorted(PLATES_PER_SIDE.keys(), reverse=True)
 
 
 def plate_breakdown(total_weight: float) -> list[float]:
     """
     Calculate plates needed per side for a given total weight.
-    Assumes standard 20 kg barbell.
+    Respects actual plate inventory (quantity per side).
     Returns list of plate weights for ONE side.
     """
     per_side = (total_weight - BAR_WEIGHT) / 2
@@ -620,10 +631,23 @@ def plate_breakdown(total_weight: float) -> list[float]:
     plates = []
     remaining = per_side
     for plate in AVAILABLE_PLATES:
-        while remaining >= plate - 0.01:  # float tolerance
+        max_count = PLATES_PER_SIDE[plate]
+        used = 0
+        while remaining >= plate - 0.01 and used < max_count:
             plates.append(plate)
             remaining -= plate
+            used += 1
     return plates
+
+
+def round_to_available(weight: float) -> float:
+    """
+    Round weight to nearest achievable weight with Juan's plates.
+    Minimum increment = 2 kg (1 kg per side).
+    """
+    # Achievable = bar + 2 * (sum of some subset of per-side plates)
+    # Simplification: round to nearest 2 kg
+    return round(weight / 2) * 2
 
 
 def format_plates(plates: list[float]) -> str:
