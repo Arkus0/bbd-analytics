@@ -598,3 +598,189 @@ def muscle_volume_531(df: pd.DataFrame) -> pd.DataFrame:
     grouped["pct"] = (grouped["total_volume"] / total * 100).round(1) if total > 0 else 0
 
     return grouped
+
+
+# ═════════════════════════════════════════════════════════════════════
+# NEXT SESSION PLANNER
+# ═════════════════════════════════════════════════════════════════════
+
+BAR_WEIGHT = 20.0
+AVAILABLE_PLATES = [20, 15, 10, 5, 2.5, 1.25]  # per side, kg
+
+
+def plate_breakdown(total_weight: float) -> list[float]:
+    """
+    Calculate plates needed per side for a given total weight.
+    Assumes standard 20 kg barbell.
+    Returns list of plate weights for ONE side.
+    """
+    per_side = (total_weight - BAR_WEIGHT) / 2
+    if per_side <= 0:
+        return []
+    plates = []
+    remaining = per_side
+    for plate in AVAILABLE_PLATES:
+        while remaining >= plate - 0.01:  # float tolerance
+            plates.append(plate)
+            remaining -= plate
+    return plates
+
+
+def format_plates(plates: list[float]) -> str:
+    """Format plate list as readable string: '20 + 5 + 2.5'"""
+    if not plates:
+        return "barra vacía"
+    parts = []
+    for p in plates:
+        display = str(int(p)) if p == int(p) else str(p)
+        parts.append(display)
+    return " + ".join(parts)
+
+
+def next_session_plan(df: pd.DataFrame) -> dict:
+    """
+    Figure out what's next and return full workout plan.
+
+    Returns {
+        day_num, day_name, lift, lift_label, cycle_num, week_in_cycle, week_name,
+        tm, working_sets, bbb, warmup
+    }
+    """
+    DAY_ORDER = [1, 2, 3, 4]
+
+    if df.empty:
+        next_day = 1
+        total_sessions = 0
+    else:
+        sessions = (
+            df.drop_duplicates("hevy_id")[["hevy_id", "date"]]
+            .sort_values("date")
+        )
+        total_sessions = len(sessions)
+        last_day_idx = (total_sessions - 1) % 4
+        next_day_idx = (last_day_idx + 1) % 4
+        next_day = DAY_ORDER[next_day_idx]
+
+    # Every 4 sessions = 1 week, every 3 weeks = 1 cycle
+    completed_weeks = total_sessions // 4
+    week_in_cycle = (completed_weeks % 3) + 1
+    cycle_num = (completed_weeks // 3) + 1
+
+    day_cfg = DAY_CONFIG_531.get(next_day, {})
+    lift = day_cfg.get("main_lift", "?")
+    week_cfg = CYCLE_WEEKS.get(week_in_cycle, CYCLE_WEEKS[1])
+
+    tm = TRAINING_MAX.get(lift)
+
+    plan = {
+        "day_num": next_day,
+        "day_name": day_cfg.get("name", f"Día {next_day}"),
+        "focus": day_cfg.get("focus", ""),
+        "lift": lift,
+        "lift_label": {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift),
+        "cycle_num": cycle_num,
+        "week_in_cycle": week_in_cycle,
+        "week_name": week_cfg["name"],
+        "tm": tm,
+        "working_sets": [],
+        "bbb": None,
+        "warmup": [],
+    }
+
+    if tm is None:
+        return plan
+
+    # ── Warmup sets ──
+    warmup_pcts = [0.40, 0.50, 0.60]
+    for pct in warmup_pcts:
+        w = round_to_plate(tm * pct)
+        plates = plate_breakdown(w)
+        plan["warmup"].append({
+            "weight": w,
+            "reps": 5,
+            "pct": pct,
+            "plates": plates,
+            "plates_str": format_plates(plates),
+        })
+
+    # ── Working 531 sets ──
+    for s in week_cfg["sets"]:
+        w = round_to_plate(tm * s["pct"])
+        plates = plate_breakdown(w)
+        reps = s["reps"]
+        plan["working_sets"].append({
+            "weight": w,
+            "reps": reps,
+            "pct": s["pct"],
+            "plates": plates,
+            "plates_str": format_plates(plates),
+            "is_amrap": isinstance(reps, str) and "+" in str(reps),
+        })
+
+    # ── BBB supplemental ──
+    bbb_pct = BBB_PCT_PROGRESSION.get(cycle_num, 0.50)
+    bbb_w = round_to_plate(tm * bbb_pct)
+    bbb_plates = plate_breakdown(bbb_w)
+    plan["bbb"] = {
+        "weight": bbb_w,
+        "sets": 5,
+        "reps": 10,
+        "pct_tm": bbb_pct,
+        "plates": bbb_plates,
+        "plates_str": format_plates(bbb_plates),
+    }
+
+    return plan
+
+
+def full_week_plan(df: pd.DataFrame) -> list[dict]:
+    """
+    Return the plan for all 4 days of the current cycle week.
+    Useful for weekly overview.
+    """
+    if df.empty:
+        total_sessions = 0
+    else:
+        total_sessions = df["hevy_id"].nunique()
+
+    completed_weeks = total_sessions // 4
+    week_in_cycle = (completed_weeks % 3) + 1
+    cycle_num = (completed_weeks // 3) + 1
+    week_cfg = CYCLE_WEEKS.get(week_in_cycle, CYCLE_WEEKS[1])
+
+    plans = []
+    for day_num in [1, 2, 3, 4]:
+        day_cfg = DAY_CONFIG_531.get(day_num, {})
+        lift = day_cfg.get("main_lift", "?")
+        tm = TRAINING_MAX.get(lift)
+        label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift)
+
+        day_plan = {
+            "day_num": day_num,
+            "lift": lift,
+            "lift_label": label,
+            "focus": day_cfg.get("focus", ""),
+            "tm": tm,
+            "sets": [],
+        }
+
+        if tm:
+            for s in week_cfg["sets"]:
+                w = round_to_plate(tm * s["pct"])
+                plates = plate_breakdown(w)
+                day_plan["sets"].append({
+                    "weight": w,
+                    "reps": s["reps"],
+                    "pct": s["pct"],
+                    "plates_str": format_plates(plates),
+                    "is_amrap": isinstance(s["reps"], str) and "+" in str(s["reps"]),
+                })
+
+            bbb_pct = BBB_PCT_PROGRESSION.get(cycle_num, 0.50)
+            bbb_w = round_to_plate(tm * bbb_pct)
+            day_plan["bbb_weight"] = bbb_w
+            day_plan["bbb_plates"] = format_plates(plate_breakdown(bbb_w))
+
+        plans.append(day_plan)
+
+    return plans

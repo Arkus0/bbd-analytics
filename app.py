@@ -17,6 +17,7 @@ from src.analytics_531 import (
     accessory_volume, accessory_summary, tm_progression,
     session_summary_531, pr_table_531, lift_progression,
     strength_level_531, weekly_volume_531, muscle_volume_531,
+    next_session_plan, full_week_plan,
 )
 from src.config_531 import (
     DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
@@ -230,6 +231,7 @@ with st.sidebar:
     st.divider()
     if is_531:
         page = st.radio("Sección", [
+            "📋 Hoy te toca",
             "📊 Dashboard",
             "🎯 AMRAP Tracker",
             "📈 Progresión",
@@ -258,6 +260,87 @@ with st.sidebar:
 # ══════════════════════════════════════════════════════════════════════
 if is_531:
     df_531 = load_531_data()
+
+    # Planner works even with no data
+    if page == "📋 Hoy te toca":
+        plan = next_session_plan(df_531)
+
+        # Header with cycle/week context
+        st.markdown(f"## 📋 Hoy te toca — {plan['lift_label']}")
+        st.markdown(
+            f"**Ciclo {plan['cycle_num']}** · **{plan['week_name']}** · "
+            f"Día {plan['day_num']}: {plan['focus']}"
+        )
+
+        if plan["tm"] is None:
+            st.warning(f"⚠️ Training Max de {plan['lift_label']} no configurado. Dime tu TM y lo actualizo.")
+        else:
+            st.caption(f"TM: {plan['tm']} kg")
+            st.divider()
+
+            # ── Warmup ──
+            st.markdown("### 🔥 Calentamiento")
+            for s in plan["warmup"]:
+                pct_display = int(s["pct"] * 100)
+                st.markdown(
+                    f"&nbsp;&nbsp;&nbsp;&nbsp;`{s['weight']:g} kg` × {s['reps']} &nbsp;&nbsp;"
+                    f"({pct_display}%) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{s['plates_str']}**"
+                )
+
+            st.divider()
+
+            # ── Working sets (the main event) ──
+            st.markdown("### 💀 Series de trabajo")
+            for s in plan["working_sets"]:
+                pct_display = int(s["pct"] * 100)
+                reps_display = s["reps"]
+                if s["is_amrap"]:
+                    st.markdown(
+                        f"&nbsp;&nbsp;&nbsp;&nbsp;🔴 `{s['weight']:g} kg` × **{reps_display}** &nbsp;&nbsp;"
+                        f"({pct_display}%) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{s['plates_str']}** &nbsp;&nbsp;⚡ **AMRAP**"
+                    )
+                else:
+                    st.markdown(
+                        f"&nbsp;&nbsp;&nbsp;&nbsp;⚪ `{s['weight']:g} kg` × {reps_display} &nbsp;&nbsp;"
+                        f"({pct_display}%) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{s['plates_str']}**"
+                    )
+
+            st.divider()
+
+            # ── BBB ──
+            bbb = plan["bbb"]
+            if bbb:
+                pct_display = int(bbb["pct_tm"] * 100)
+                st.markdown("### 📦 BBB Supplemental")
+                st.markdown(
+                    f"&nbsp;&nbsp;&nbsp;&nbsp;`{bbb['weight']:g} kg` × {bbb['reps']} × {bbb['sets']} sets &nbsp;&nbsp;"
+                    f"({pct_display}% TM) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{bbb['plates_str']}**"
+                )
+
+            st.divider()
+
+            # ── Full week overview ──
+            st.markdown("### 📅 Esta semana completa")
+            week_plans = full_week_plan(df_531)
+            cols = st.columns(4)
+            for i, dp in enumerate(week_plans):
+                with cols[i]:
+                    is_next = (dp["day_num"] == plan["day_num"])
+                    marker = " ← 👈" if is_next else ""
+                    st.markdown(f"**{dp['lift_label']}**{marker}")
+                    if dp["tm"]:
+                        for s in dp["sets"]:
+                            pct_d = int(s["pct"] * 100)
+                            reps_d = s["reps"]
+                            if s["is_amrap"]:
+                                st.markdown(f"🔴 {s['weight']:g}kg × {reps_d}")
+                            else:
+                                st.caption(f"{s['weight']:g}kg × {reps_d} ({pct_d}%)")
+                        st.caption(f"BBB: {dp.get('bbb_weight', '?')}kg 5×10")
+                    else:
+                        st.caption("TM pendiente")
+
+        st.stop()
 
     if df_531.empty:
         st.warning("No hay entrenamientos 531 BBB registrados todavía.")
