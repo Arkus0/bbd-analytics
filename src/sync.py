@@ -9,6 +9,13 @@ from src.analytics import add_derived_columns, global_summary, pr_table
 from src.notion_client import sync_to_notion, get_synced_hevy_ids
 from src.config import NOTION_BBD_LOGBOOK_DB
 
+# 531 imports
+from src.analytics_531 import (
+    fetch_bbb_workouts, workouts_to_dataframe_531, add_cycle_info,
+    global_summary_531, pr_table_531,
+)
+from src.notion_531 import sync_531_logbook, update_531_analytics_page
+
 
 def run_sync(dry_run: bool = False) -> dict:
     """
@@ -88,7 +95,63 @@ def run_sync(dry_run: bool = False) -> dict:
     return {"synced": synced, "total": len(df)}
 
 
+def run_531_sync(dry_run: bool = False) -> dict:
+    """
+    531 BBB sync pipeline:
+    1. Fetch BBB workouts from Hevy
+    2. Convert to DataFrame
+    3. Sync new entries to Notion logbook
+    4. Update analytics page
+    """
+    print("\n💀 531 BBB Sync — Starting...")
+
+    # 1. Fetch
+    print("\n📥 Fetching 531 BBB workouts from Hevy...")
+    workouts = fetch_bbb_workouts()
+    print(f"   Found {len(workouts)} BBB workouts")
+
+    if not workouts:
+        print("   No BBB workouts found. Done.")
+        return {"synced": 0, "total": 0}
+
+    # 2. Convert
+    df = workouts_to_dataframe_531(workouts)
+    df = add_cycle_info(df)
+    print(f"   {len(df)} set entries across {df['hevy_id'].nunique()} sessions")
+
+    # 3. Sync logbook
+    if dry_run:
+        print("\n🏃 DRY RUN — skipping Notion write")
+        synced = 0
+    else:
+        print("\n📤 Syncing 531 logbook to Notion...")
+        synced = sync_531_logbook(df)
+        print(f"   ✅ Created {synced} entries in Notion")
+
+    # 4. Update Analytics page
+    if not dry_run:
+        print()
+        update_531_analytics_page(df)
+
+    # Summary
+    summary = global_summary_531(df)
+    prs = pr_table_531(df)
+
+    print(f"\n{'='*50}")
+    print(f"💀 531 BBB Summary:")
+    print(f"   Sessions: {summary.get('total_sessions', 0)}")
+    print(f"   Total volume: {summary.get('total_volume_kg', 0):,} kg")
+    if not prs.empty:
+        print(f"\n🏆 Top PRs:")
+        for _, row in prs.head(5).iterrows():
+            print(f"   {row['exercise']}: {row['max_weight']}kg (e1RM {row['max_e1rm']})")
+
+    return {"synced": synced, "total": len(df)}
+
+
 if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
-    result = run_sync(dry_run=dry)
-    print(f"\nDone. Synced {result['synced']} new entries.")
+    # Run both syncs
+    bbd_result = run_sync(dry_run=dry)
+    bbb_result = run_531_sync(dry_run=dry)
+    print(f"\nDone. BBD: {bbd_result['synced']} new. 531: {bbb_result['synced']} new.")

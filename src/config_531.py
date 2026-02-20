@@ -8,8 +8,11 @@ import os
 
 # ── Hevy / Notion IDs ────────────────────────────────────────────────
 BBB_FOLDER_ID = 2401466
+NOTION_531_LOGBOOK_DB = os.environ.get(
+    "NOTION_531_LOGBOOK_DB", "31e7df96-6afb-4b58-a34c-817cb2bf887d"
+)
 NOTION_531_ANALYTICS_PAGE = os.environ.get(
-    "NOTION_531_ANALYTICS_PAGE", ""  # TBD — will be set when page is created
+    "NOTION_531_ANALYTICS_PAGE", "30dcbc49-9cfe-81fb-8d7e-ebe669b303be"
 )
 
 # ── Physical ─────────────────────────────────────────────────────────
