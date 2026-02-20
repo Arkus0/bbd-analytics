@@ -25,16 +25,16 @@ PROGRAM_START_531 = "2026-02-20"
 TRAINING_MAX = {
     "ohp":      58,     # From BBB Day 1 data: 85% x 50kg → TM ≈ 58
     "deadlift": 140,    # From BBD data: e1RM 156kg → TM ≈ 140
-    "bench":    None,    # TBD — Juan hasn't done bench day yet
-    "squat":    None,    # TBD — Juan hasn't done squat day yet
+    "bench":    76,     # From BBD data: e1RM 85kg (64x10) → TM ≈ 76
+    "squat":    80,     # Conservative: no back squat history, based on front sq/zercher
 }
 
 # TM increment per cycle
 TM_INCREMENT = {
-    "ohp":      2.5,   # Upper body: +2.5 kg/cycle
-    "deadlift": 5.0,   # Lower body: +5 kg/cycle
-    "bench":    2.5,
-    "squat":    5.0,
+    "ohp":      2,     # Upper body: +2 kg/cycle (smallest: 1kg/side)
+    "deadlift": 4,     # Lower body: +4 kg/cycle (2kg/side)
+    "bench":    2,
+    "squat":    4,
 }
 
 # ── 531 Cycle Structure ──────────────────────────────────────────────
@@ -121,7 +121,7 @@ MAIN_LIFT_TIDS = {
     "ohp":      "073032BB",   # Press Militar de Pie (Barra)
     "deadlift": "C6272009",   # Peso Muerto (Barra)
     "bench":    "E644F828",   # Press de Banca - Agarre Abierto (Barra)
-    "squat":    None,         # TBD — will set when Juan creates squat routine
+    "squat":    "D04AC939",   # Squat (Barbell) — Back Squat
 }
 
 # Reverse lookup: template_id → lift name
@@ -149,6 +149,12 @@ EXERCISE_DB_531 = {
         "lift": "bench",
         "muscle_group": "Pecho",
     },
+    "D04AC939": {
+        "name": "Squat (Barbell)",
+        "role": "main",
+        "lift": "squat",
+        "muscle_group": "Piernas",
+    },
     # Accessories from Day 1
     "0B841777": {
         "name": "Shrug (Barbell)",
@@ -174,8 +180,10 @@ EXCEPTION_WORKOUT_IDS = {
 
 # ── Routine IDs in BBB folder ────────────────────────────────────────
 BBB_ROUTINE_IDS = {
-    "619fb49a-7d62-4de5-9567-86e616103b5b",  # BBB día 1
-    # More will be added as Juan creates routines for days 2-4
+    "619fb49a-7d62-4de5-9567-86e616103b5b",  # BBB día 1 - OHP
+    "03568ae1-833e-4e84-af2a-f1ffe914e91b",  # BBB día 2 - Deadlift
+    "5bec1b7b-25d8-4c84-be6e-35f915a9a3fc",  # BBB día 3 - Bench
+    "331eb58f-e25e-47c0-b375-5e526ceab5e1",  # BBB día 4 - Squat
 }
 
 # ── Strength Standards (Wendler-style, multiples of BW) ──────────────
