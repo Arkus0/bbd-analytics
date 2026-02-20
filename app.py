@@ -9,7 +9,19 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime
 
-from src.hevy_client import fetch_bbd_workouts, workouts_to_dataframe
+from src.hevy_client import fetch_bbd_workouts, workouts_to_dataframe, fetch_all_workouts
+from src.analytics_531 import (
+    fetch_bbb_workouts as _fetch_bbb_workouts,
+    workouts_to_dataframe_531, add_cycle_info,
+    global_summary_531, amrap_tracking, bbb_compliance,
+    accessory_volume, accessory_summary, tm_progression,
+    session_summary_531, pr_table_531, lift_progression,
+    strength_level_531, weekly_volume_531, muscle_volume_531,
+)
+from src.config_531 import (
+    DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
+    BODYWEIGHT as BW_531, PROGRAM_START_531,
+)
 from src.analytics import (
     add_derived_columns, global_summary, weekly_breakdown,
     pr_table, pr_history, muscle_volume, weekly_muscle_volume,
@@ -146,6 +158,18 @@ def load_raw_data():
     workouts = fetch_bbd_workouts()
     return workouts_to_dataframe(workouts)
 
+
+@st.cache_data(ttl=300)
+def load_531_data():
+    """Cache 531 BBB data."""
+    workouts = _fetch_bbb_workouts()
+    if not workouts:
+        return pd.DataFrame()
+    df = workouts_to_dataframe_531(workouts)
+    if not df.empty:
+        df = add_cycle_info(df)
+    return df
+
 try:
     raw_df = load_raw_data()
     df = add_derived_columns(raw_df)
@@ -177,7 +201,12 @@ except Exception as e:
 # ── Sidebar ──────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("# 🔥 BBD Analytics")
-    st.caption(f"Backed by Deadlifts — desde {pd.Timestamp(PROGRAM_START).strftime('%d %b %Y')}")
+    program = st.selectbox("Programa", ["🔥 BBD", "💀 531 BBB"], label_visibility="collapsed")
+    is_531 = program == "💀 531 BBB"
+    if is_531:
+        st.caption(f"Wendler's 531 Boring But Big — desde {pd.Timestamp(PROGRAM_START_531).strftime('%d %b %Y')}")
+    else:
+        st.caption(f"Backed by Deadlifts — desde {pd.Timestamp(PROGRAM_START).strftime('%d %b %Y')}")
     st.divider()
     if st.button("🔄 Actualizar datos", use_container_width=True):
         st.cache_data.clear()
@@ -199,7 +228,17 @@ with st.sidebar:
             st.caption(f"✅ Notion sync: hace {int(hours_since)}h")
 
     st.divider()
-    page = st.radio("Sección", [
+    if is_531:
+        page = st.radio("Sección", [
+            "📊 Dashboard",
+            "🎯 AMRAP Tracker",
+            "📈 Progresión",
+            "🏋️ Strength Standards",
+            "💪 Sesiones",
+            "🏆 PRs",
+        ], label_visibility="collapsed")
+    else:
+        page = st.radio("Sección", [
         "📊 Dashboard",
         "📈 Progresión",
         "🎯 Ratios BBD",
@@ -213,6 +252,249 @@ with st.sidebar:
         "🏆 PRs",
         "🎯 Adherencia",
     ], label_visibility="collapsed")
+
+# ══════════════════════════════════════════════════════════════════════
+# 💀 531 BBB DASHBOARD
+# ══════════════════════════════════════════════════════════════════════
+if is_531:
+    df_531 = load_531_data()
+
+    if df_531.empty:
+        st.warning("No hay entrenamientos 531 BBB registrados todavía.")
+        st.info("Asegúrate de iniciar el workout desde la rutina BBB en Hevy para que se detecte automáticamente.")
+        st.stop()
+
+    summary_531 = global_summary_531(df_531)
+
+    if page == "📊 Dashboard":
+        st.markdown("## 💀 531 BBB — Dashboard")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Sesiones", summary_531.get("total_sessions", 0))
+        c2.metric("Volumen Total", f"{summary_531.get('total_volume_kg', 0):,} kg")
+        c3.metric("Sets Totales", summary_531.get("total_sets", 0))
+        c4.metric("AMRAPs", summary_531.get("amrap_count", 0))
+
+        st.divider()
+
+        # Training Maxes
+        st.markdown("### 🎯 Training Maxes")
+        tm_cols = st.columns(4)
+        lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+        lift_emojis = {"ohp": "🏋️", "deadlift": "💀", "bench": "🪑", "squat": "🦵"}
+        for i, (lift, label) in enumerate(lift_labels.items()):
+            tm = TRAINING_MAX.get(lift)
+            if tm:
+                tm_cols[i].metric(f"{lift_emojis[lift]} {label}", f"{tm} kg")
+            else:
+                tm_cols[i].metric(f"{lift_emojis[lift]} {label}", "TBD")
+
+        st.divider()
+
+        # AMRAP summary
+        amraps = amrap_tracking(df_531)
+        if not amraps.empty:
+            st.markdown("### 🎯 Últimos AMRAPs")
+            for _, row in amraps.iterrows():
+                lift_label = lift_labels.get(row["lift"], row["lift"])
+                over = row["reps_over_min"]
+                emoji = "🟢" if over >= 3 else "🟡" if over >= 0 else "🔴"
+                st.markdown(
+                    f"{emoji} **{lift_label}** — {row['weight_kg']}kg × **{row['reps']}** reps "
+                    f"(mín: {row['min_reps']}, +{over}) → e1RM: **{row['e1rm']}kg**"
+                )
+
+        st.divider()
+
+        # BBB compliance
+        bbb = bbb_compliance(df_531)
+        if not bbb.empty:
+            st.markdown("### 📦 BBB Supplemental")
+            for _, row in bbb.iterrows():
+                lift_label = lift_labels.get(row["lift"], str(row["lift"]))
+                status = "✅" if row["sets_ok"] and row["reps_ok"] else "⚠️"
+                pct = f" ({row['pct_of_tm']}% TM)" if row["pct_of_tm"] else ""
+                st.markdown(
+                    f"{status} **{lift_label}** — {row['weight_kg']}kg{pct} | "
+                    f"{row['n_sets']} sets × {row['avg_reps']} reps avg (total: {row['total_reps']})"
+                )
+
+        # Accessory summary
+        acc = accessory_summary(df_531)
+        if not acc.empty:
+            st.markdown("### 🔧 Accesorios")
+            for _, row in acc.iterrows():
+                st.markdown(
+                    f"**{row['muscle_group']}** — {row['total_sets']} sets, "
+                    f"{row['total_reps']} reps, {row['total_volume']:,.0f} kg"
+                )
+
+    elif page == "🎯 AMRAP Tracker":
+        st.markdown("## 🎯 AMRAP Tracker")
+        st.caption("La serie AMRAP es el pulso de tu progresión en 531.")
+
+        amraps = amrap_tracking(df_531)
+        if amraps.empty:
+            st.info("Sin datos de AMRAP aún.")
+        else:
+            # AMRAP table
+            display = amraps.copy()
+            display["lift"] = display["lift"].map(
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+            )
+            display.columns = ["Fecha", "Lift", "Peso (kg)", "Reps", "e1RM",
+                               "Mín Reps", "+Sobre Mín", "% TM"]
+            st.dataframe(display, use_container_width=True, hide_index=True)
+
+            # AMRAP e1RM chart
+            st.markdown("### 📈 e1RM desde AMRAPs")
+            prog = lift_progression(df_531)
+            if not prog.empty:
+                prog_display = prog.copy()
+                prog_display["lift"] = prog_display["lift"].map(
+                    {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                )
+                fig = px.line(
+                    prog_display, x="date", y="e1rm", color="lift",
+                    markers=True, title="e1RM por lift (AMRAP)",
+                    labels={"date": "", "e1rm": "e1RM (kg)", "lift": ""},
+                )
+                fig.update_layout(**PL)
+                st.plotly_chart(fig, use_container_width=True)
+
+        # BBB compliance section
+        st.divider()
+        st.markdown("### 📦 BBB Supplemental Compliance")
+        bbb = bbb_compliance(df_531)
+        if bbb.empty:
+            st.info("Sin datos de BBB aún.")
+        else:
+            bbb_display = bbb[["date", "lift", "weight_kg", "n_sets", "total_reps", "avg_reps", "pct_of_tm"]].copy()
+            bbb_display["lift"] = bbb_display["lift"].map(
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+            )
+            bbb_display.columns = ["Fecha", "Lift", "Peso (kg)", "Sets", "Total Reps", "Avg Reps", "% TM"]
+            st.dataframe(bbb_display, use_container_width=True, hide_index=True)
+
+    elif page == "📈 Progresión":
+        st.markdown("## 📈 Progresión")
+
+        # TM progression
+        st.markdown("### 🎯 Training Max vs Estimated")
+        tm_prog = tm_progression(df_531)
+        if not tm_prog.empty:
+            tm_display = tm_prog.copy()
+            tm_display["lift"] = tm_display["lift"].map(
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+            )
+            tm_display = tm_display[["lift", "date", "amrap_weight", "amrap_reps", "e1rm", "estimated_tm", "current_tm"]]
+            tm_display.columns = ["Lift", "Fecha", "AMRAP Peso", "AMRAP Reps", "e1RM", "TM Estimado", "TM Actual"]
+            st.dataframe(tm_display, use_container_width=True, hide_index=True)
+        else:
+            st.info("Se necesitan más datos para mostrar progresión de TM.")
+
+        # Volume by week
+        st.divider()
+        st.markdown("### 📊 Volumen Semanal")
+        wv = weekly_volume_531(df_531)
+        if not wv.empty:
+            fig = px.bar(
+                wv, x="week_start", y="total_volume", color="set_type",
+                title="Volumen por semana y tipo de serie",
+                labels={"week_start": "", "total_volume": "Volumen (kg)", "set_type": "Tipo"},
+                color_discrete_map={
+                    "warmup": "#64748b", "working_531": "#ef4444",
+                    "amrap": "#f59e0b", "bbb": "#3b82f6", "accessory": "#22c55e",
+                },
+            )
+            fig.update_layout(**PL)
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Muscle volume
+        st.divider()
+        st.markdown("### 💪 Distribución Muscular")
+        mv = muscle_volume_531(df_531)
+        if not mv.empty:
+            fig = px.pie(
+                mv, values="total_volume", names="muscle_group",
+                title="Volumen por grupo muscular",
+            )
+            fig.update_layout(**PL)
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif page == "🏋️ Strength Standards":
+        st.markdown("## 🏋️ Strength Standards (531)")
+
+        levels = strength_level_531(df_531)
+        lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+
+        for lift, label in lift_labels.items():
+            info = levels.get(lift, {})
+            e1rm = info.get("e1rm")
+            ratio = info.get("ratio_bw")
+            level = info.get("level", "Sin datos")
+
+            level_colors = {
+                "Elite": "🟣", "Avanzado": "🔵", "Intermedio": "🟢",
+                "Principiante": "🟡", "Novato": "⚪", "Sin datos": "⬜",
+            }
+            emoji = level_colors.get(level, "⬜")
+
+            if e1rm:
+                st.markdown(f"{emoji} **{label}** — e1RM: {e1rm}kg ({ratio}×BW) → **{level}**")
+
+                # Progress bar to next level
+                stds = STRENGTH_STANDARDS_531[lift]
+                levels_order = ["beginner", "intermediate", "advanced", "elite"]
+                for j, lvl in enumerate(levels_order):
+                    if ratio < stds[lvl]:
+                        target = stds[lvl] * BODYWEIGHT
+                        prev = stds[levels_order[j-1]] * BODYWEIGHT if j > 0 else 0
+                        progress = (e1rm - prev) / (target - prev) if target > prev else 1
+                        st.progress(min(progress, 1.0), text=f"→ {levels_order[j].title()}: {target:.0f}kg ({stds[lvl]}×BW)")
+                        break
+                else:
+                    st.progress(1.0, text="🏆 Elite alcanzado")
+            else:
+                st.markdown(f"{emoji} **{label}** — {level}")
+
+            st.divider()
+
+    elif page == "💪 Sesiones":
+        st.markdown("## 💪 Sesiones")
+
+        sessions = session_summary_531(df_531)
+        if sessions.empty:
+            st.info("Sin sesiones registradas.")
+        else:
+            for _, s in sessions.iterrows():
+                lift_label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(s["main_lift"], s["main_lift"])
+                with st.expander(f"📅 {s['date'].strftime('%d %b')} — {lift_label} | {s['total_volume']:,}kg"):
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("AMRAP", f"{s['amrap_weight']}kg × {s['amrap_reps']}")
+                    c2.metric("BBB", f"{s['bbb_sets']} sets × {s['bbb_avg_reps']} reps")
+                    c3.metric("Accesorios", f"{s['accessory_sets']} sets | {s['accessory_volume']:,}kg")
+
+    elif page == "🏆 PRs":
+        st.markdown("## 🏆 PRs")
+
+        prs = pr_table_531(df_531)
+        if prs.empty:
+            st.info("Sin PRs registrados aún.")
+        else:
+            st.dataframe(
+                prs[["exercise", "max_weight", "max_e1rm", "best_date"]].rename(columns={
+                    "exercise": "Ejercicio", "max_weight": "Peso Máx (kg)",
+                    "max_e1rm": "e1RM (kg)", "best_date": "Fecha",
+                }),
+                use_container_width=True, hide_index=True,
+            )
+
+    st.stop()  # Don't fall through to BBD sections
+
+# ══════════════════════════════════════════════════════════════════════
+# 🔥 BBD DASHBOARD (existing code below — unchanged)
+# ══════════════════════════════════════════════════════════════════════
 
 if df.empty:
     st.warning("No hay entrenamientos BBD registrados.")
