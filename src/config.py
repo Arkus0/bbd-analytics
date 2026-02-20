@@ -51,13 +51,21 @@ DAY_CONFIG = {
 
 EXERCISE_DB = {
     # ── Day 1 — Deadlift + Legs ─────────────────────────────────────
-    "2B4B7310": {
-        "name": "Peso Muerto Rumano (Barra)",
+    "C6272009": {
+        "name": "Deadlift (Barbell)",
         "day": 1,
         "muscle_group": "Espalda Baja",
         "is_key_lift": True,
         "is_compound": True,
-        "strength_std": {"int": 1.05, "adv": 1.5, "elite": 1.8},  # PMR ≈ 60% of conventional DL
+        "strength_std": {"int": 1.5, "adv": 2.0, "elite": 2.5},  # Conventional DL standards
+    },
+    "2B4B7310": {
+        "name": "Peso Muerto Rumano (Barra)",
+        "day": 1,
+        "muscle_group": "Espalda Baja",
+        "is_key_lift": False,  # Demoted: historical data only (replaced by conventional DL)
+        "is_compound": True,
+        "strength_std": {"int": 1.05, "adv": 1.5, "elite": 1.8},
     },
     "d2c10c97-2d54-4159-abd3-a46404710d65": {
         "name": "Reverse Deadlift (Bob Peoples)",
@@ -111,7 +119,7 @@ EXERCISE_DB = {
         "is_key_lift": True,
         "is_compound": True,
         "strength_std": {"int": 0.65, "adv": 1.0, "elite": 1.25},
-        "bbd_ratio": {"label": "OHP / DL", "range": (35, 45)},
+        "bbd_ratio": {"label": "OHP / DL", "range": (20, 30)},
     },
     "50DFDFAB": {
         "name": "Incline Bench Press (Barbell)",
@@ -204,7 +212,7 @@ EXERCISE_DB = {
         "is_key_lift": True,
         "is_compound": True,
         "strength_std": {"int": 1.0, "adv": 1.5, "elite": 2.0},
-        "bbd_ratio": {"label": "Shrug / DL", "range": (85, 100)},
+        "bbd_ratio": {"label": "Shrug / DL", "range": (50, 65)},
     },
     "018ADC12": {
         "name": "Pendlay Row (Barbell)",
@@ -213,7 +221,7 @@ EXERCISE_DB = {
         "is_key_lift": True,
         "is_compound": True,
         "strength_std": {"int": 0.75, "adv": 1.25, "elite": 1.5},
-        "bbd_ratio": {"label": "Pendlay / DL", "range": (45, 55)},
+        "bbd_ratio": {"label": "Pendlay / DL", "range": (25, 35)},
     },
     "F1E57334": {
         "name": "Dumbbell Row",
@@ -239,14 +247,22 @@ EXERCISE_DB = {
     },
 
     # ── Day 5 — Legs ────────────────────────────────────────────────
-    "5046D0A9": {
-        "name": "Front Squat",
+    "40C6A9FC": {
+        "name": "Zercher Squat",
         "day": 5,
         "muscle_group": "Cuádriceps",
         "is_key_lift": True,
         "is_compound": True,
+        "strength_std": {"int": 0.85, "adv": 1.25, "elite": 1.6},
+        "bbd_ratio": {"label": "Zercher / DL", "range": (30, 45)},
+    },
+    "5046D0A9": {
+        "name": "Front Squat",
+        "day": 5,
+        "muscle_group": "Cuádriceps",
+        "is_key_lift": False,  # Demoted: historical data only (replaced by Zercher Squat)
+        "is_compound": True,
         "strength_std": {"int": 1.25, "adv": 1.75, "elite": 2.25},
-        "bbd_ratio": {"label": "Front Squat / DL", "range": (55, 70)},
     },
     "c7949429-2829-4898-9cbc-5e16bb7aa893": {
         "name": "Quarter Squat",
@@ -285,7 +301,7 @@ EXERCISE_DB = {
         "is_key_lift": True,
         "is_compound": True,
         "strength_std": {"int": 0.45, "adv": 0.65, "elite": 0.85},
-        "bbd_ratio": {"label": "Klokov / DL", "range": (25, 35)},
+        "bbd_ratio": {"label": "Klokov / DL", "range": (15, 22)},
     },
     "35B51B87": {
         "name": "Bench Press - Close Grip (Barbell)",
@@ -360,7 +376,7 @@ def get_bbd_ratios() -> dict:
 
 
 # Deadlift reference exercise
-DEADLIFT_TEMPLATE_ID = "2B4B7310"
+DEADLIFT_TEMPLATE_ID = "C6272009"  # Conventional Deadlift (Barbell)
 SHRUG_TEMPLATE_ID = "0B841777"
 PULLUP_TEMPLATE_ID = "1B2B1E7C"
 

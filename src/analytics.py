@@ -257,40 +257,31 @@ def weekly_muscle_volume(df: pd.DataFrame) -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════
 
 def _program_dl_e1rm(df: pd.DataFrame) -> float:
-    """Get raw e1RM from the program's deadlift variant (PMR). No conversion."""
+    """Get e1RM from the program's deadlift (conventional). Used for BBD ratios."""
     dl_df = df[df["exercise_template_id"] == DEADLIFT_TEMPLATE_ID]
     if not dl_df.empty and dl_df["e1rm"].max() > 0:
         return float(dl_df["e1rm"].max())
-    # Fallback: shrug-based PMR estimate (~92.5% of PMR)
-    shrug_df = df[df["exercise_template_id"] == SHRUG_TEMPLATE_ID]
-    if not shrug_df.empty and shrug_df["e1rm"].max() > 0:
-        return round(shrug_df["e1rm"].max() / 0.925 * 0.60, 1)
-    return 0.0
-
-
-def estimate_dl_1rm(df: pd.DataFrame) -> float:
-    """Estimate conventional deadlift 1RM.
-    
-    The weight loaded on the bar for PMR IS 60% of conventional DL 1RM,
-    regardless of how many reps are performed with it.
-    So: conventional DL 1RM ≈ PMR bar weight / 0.60
-    Fallback: estimate from shrug (~92.5% of conventional DL).
-    """
-    dl_df = df[df["exercise_template_id"] == DEADLIFT_TEMPLATE_ID]
-    if not dl_df.empty and dl_df["max_weight"].max() > 0:
-        return round(float(dl_df["max_weight"].max()) / 0.60, 1)
-    # Fallback: estimate from shrug (~92.5% of conventional DL)
+    # Fallback: shrug-based estimate (~92.5% of conventional DL)
     shrug_df = df[df["exercise_template_id"] == SHRUG_TEMPLATE_ID]
     if not shrug_df.empty and shrug_df["e1rm"].max() > 0:
         return round(shrug_df["e1rm"].max() / 0.925, 1)
     return 0.0
 
 
+def estimate_dl_1rm(df: pd.DataFrame) -> float:
+    """Estimate conventional deadlift 1RM.
+    
+    Now that the program uses conventional DL directly, this is just the e1RM.
+    Fallback: estimate from shrug (~92.5% of conventional DL).
+    """
+    return _program_dl_e1rm(df)
+
+
 def relative_intensity(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty:
         return df
     df = df.copy()
-    dl_1rm = _program_dl_e1rm(df)  # Raw PMR e1RM for program-relative %
+    dl_1rm = _program_dl_e1rm(df)  # Conventional DL e1RM
     ex_max = df.groupby("exercise")["e1rm"].transform("max")
     df["pct_of_pr"] = np.where(ex_max > 0, (df["e1rm"] / ex_max * 100).round(1), 0)
     df["dl_1rm_est"] = dl_1rm
@@ -299,8 +290,8 @@ def relative_intensity(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def bbd_ratios(df: pd.DataFrame) -> pd.DataFrame:
-    """Calculate BBD exercise ratios vs program DL (PMR) e1RM — uses template_id."""
-    dl_1rm = _program_dl_e1rm(df)  # Raw PMR e1RM, NOT conventional estimate
+    """Calculate BBD exercise ratios vs conventional DL e1RM — uses template_id."""
+    dl_1rm = _program_dl_e1rm(df)  # Conventional DL e1RM
     if dl_1rm == 0:
         return pd.DataFrame()
     
@@ -645,15 +636,15 @@ def key_lifts_progression(df: pd.DataFrame) -> dict:
 
 # Achievement definitions
 STRENGTH_ACHIEVEMENTS = [
-    # ── Deadlift milestones (conventional DL equivalent, estimated from PMR ÷ 0.60) ──
-    {"id": "dl_1.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 1.5×BW", "desc": "Peso muerto convencional equivalente a 1.5×BW", "xp": 100,
-     "lift_tid": "2B4B7310", "ratio": 1.5, "conv_factor": 0.60},
-    {"id": "dl_2x", "cat": "🏋️ Fuerza", "name": "Deadlift 2×BW", "desc": "Peso muerto convencional equivalente a 2×BW", "xp": 250,
-     "lift_tid": "2B4B7310", "ratio": 2.0, "conv_factor": 0.60},
-    {"id": "dl_2.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 2.5×BW", "desc": "Peso muerto convencional equivalente a 2.5×BW", "xp": 500,
-     "lift_tid": "2B4B7310", "ratio": 2.5, "conv_factor": 0.60},
-    {"id": "dl_3x", "cat": "🏋️ Fuerza", "name": "Deadlift 3×BW", "desc": "Peso muerto convencional equivalente a 3×BW — élite", "xp": 1000,
-     "lift_tid": "2B4B7310", "ratio": 3.0, "conv_factor": 0.60},
+    # ── Deadlift milestones (conventional DL, direct measurement) ──
+    {"id": "dl_1.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 1.5×BW", "desc": "Peso muerto convencional a 1.5×BW", "xp": 100,
+     "lift_tid": "C6272009", "ratio": 1.5},
+    {"id": "dl_2x", "cat": "🏋️ Fuerza", "name": "Deadlift 2×BW", "desc": "Peso muerto convencional a 2×BW", "xp": 250,
+     "lift_tid": "C6272009", "ratio": 2.0},
+    {"id": "dl_2.5x", "cat": "🏋️ Fuerza", "name": "Deadlift 2.5×BW", "desc": "Peso muerto convencional a 2.5×BW", "xp": 500,
+     "lift_tid": "C6272009", "ratio": 2.5},
+    {"id": "dl_3x", "cat": "🏋️ Fuerza", "name": "Deadlift 3×BW", "desc": "Peso muerto convencional a 3×BW — élite", "xp": 1000,
+     "lift_tid": "C6272009", "ratio": 3.0},
     # ── Bench milestones ──
     {"id": "bench_1x", "cat": "🏋️ Fuerza", "name": "Bench 1×BW", "desc": "Press banca a 1 vez tu peso corporal", "xp": 150,
      "lift_tid": "E644F828", "ratio": 1.0},
@@ -668,13 +659,13 @@ STRENGTH_ACHIEVEMENTS = [
      "lift_tid": "073032BB", "ratio": 0.75},
     {"id": "ohp_1x", "cat": "🏋️ Fuerza", "name": "OHP 1×BW", "desc": "Press militar a tu peso corporal — hito legendario", "xp": 600,
      "lift_tid": "073032BB", "ratio": 1.0},
-    # ── Front Squat milestones ──
-    {"id": "fsq_1x", "cat": "🏋️ Fuerza", "name": "Front Squat 1×BW", "desc": "Sentadilla frontal a tu peso corporal", "xp": 100,
-     "lift_tid": "5046D0A9", "ratio": 1.0},
-    {"id": "fsq_1.5x", "cat": "🏋️ Fuerza", "name": "Front Squat 1.5×BW", "desc": "Sentadilla frontal a 1.5 veces tu peso corporal", "xp": 300,
-     "lift_tid": "5046D0A9", "ratio": 1.5},
-    {"id": "fsq_2x", "cat": "🏋️ Fuerza", "name": "Front Squat 2×BW", "desc": "Sentadilla frontal a 2 veces tu peso corporal — élite", "xp": 700,
-     "lift_tid": "5046D0A9", "ratio": 2.0},
+    # ── Zercher Squat milestones ──
+    {"id": "zsq_1x", "cat": "🏋️ Fuerza", "name": "Zercher Squat 1×BW", "desc": "Sentadilla Zercher a tu peso corporal", "xp": 150,
+     "lift_tid": "40C6A9FC", "ratio": 1.0},
+    {"id": "zsq_1.25x", "cat": "🏋️ Fuerza", "name": "Zercher Squat 1.25×BW", "desc": "Sentadilla Zercher a 1.25 veces tu peso corporal", "xp": 350,
+     "lift_tid": "40C6A9FC", "ratio": 1.25},
+    {"id": "zsq_1.5x", "cat": "🏋️ Fuerza", "name": "Zercher Squat 1.5×BW", "desc": "Sentadilla Zercher a 1.5 veces tu peso corporal — élite", "xp": 700,
+     "lift_tid": "40C6A9FC", "ratio": 1.5},
     # ── Pendlay Row milestones ──
     {"id": "row_1x", "cat": "🏋️ Fuerza", "name": "Pendlay Row 1×BW", "desc": "Remo Pendlay a tu peso corporal", "xp": 150,
      "lift_tid": "018ADC12", "ratio": 1.0},
@@ -722,30 +713,18 @@ LEVEL_TABLE = [
 
 
 def _check_lift_achievement(ach: dict, df: pd.DataFrame, bodyweight: float) -> dict:
-    """Check a BW-ratio lift achievement.
-    
-    If conv_factor is present (e.g. 0.60 for PMR→conventional DL),
-    the raw e1RM is divided by conv_factor to estimate the conventional equivalent.
-    """
+    """Check a BW-ratio lift achievement."""
     tid = ach["lift_tid"]
     target_ratio = ach["ratio"]
-    conv_factor = ach.get("conv_factor", 1.0)  # 1.0 = no conversion
     target_kg = target_ratio * bodyweight
 
     ex_df = df[df["exercise_template_id"] == tid]
     if ex_df.empty or ex_df["e1rm"].max() <= 0:
         return {**ach, "unlocked": False, "progress": 0.0, "current": "Sin datos", "target_kg": target_kg}
 
-    if conv_factor != 1.0:
-        # PMR: the bar weight IS the percentage of conventional DL 1RM
-        bar_weight = ex_df["max_weight"].max()
-        estimated_1rm = bar_weight / conv_factor
-        ratio = estimated_1rm / bodyweight
-        label = f"{bar_weight:.0f}kg PMR → ~{estimated_1rm:.0f}kg conv ({ratio:.2f}×BW)"
-    else:
-        estimated_1rm = ex_df["e1rm"].max()
-        ratio = estimated_1rm / bodyweight
-        label = f"{estimated_1rm:.0f}kg ({ratio:.2f}×BW)"
+    estimated_1rm = ex_df["e1rm"].max()
+    ratio = estimated_1rm / bodyweight
+    label = f"{estimated_1rm:.0f}kg ({ratio:.2f}×BW)"
 
     progress = min(1.0, ratio / target_ratio)
 
@@ -1058,7 +1037,7 @@ def strength_profile(df: pd.DataFrame, as_of_week: int = None) -> dict:
     - Empuje Vertical (OHP, Klokov, Bradford)
     - Empuje Horizontal (Bench variations, Incline)
     - Tracción (Pendlay, Pull-ups, DB Row, Cable Row)
-    - Piernas (Front Squat, Quarter Squat, Deadlift, Lunges, Leg Curl)
+    - Piernas (Zercher Squat, Quarter Squat, Deadlift, Lunges, Leg Curl)
     - Core & Grip (Ab Wheel, Dead Hold, KB Swing)
 
     Returns {axis: normalized_score 0-100} based on best e1RM relative to body weight.
