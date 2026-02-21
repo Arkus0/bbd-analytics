@@ -26,6 +26,8 @@ from src.config_531 import (
     BBB_FOLDER_ID,
     BBB_ROUTINE_IDS,
     EXCEPTION_WORKOUT_IDS,
+    DAY_ROUTINE_MAP,
+    DAY_ACCESSORIES,
     round_to_plate,
 )
 
@@ -808,3 +810,123 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
         plans.append(day_plan)
 
     return plans
+
+
+# ═════════════════════════════════════════════════════════════════════
+# HEVY ROUTINE AUTO-UPDATER
+# ═════════════════════════════════════════════════════════════════════
+
+def build_routine_exercises(day_num: int, week_in_cycle: int, cycle_num: int) -> list:
+    """
+    Build the full exercise list for a Hevy routine with correct weights
+    for the given week/cycle.
+    """
+    day_cfg = DAY_CONFIG_531.get(day_num, {})
+    lift = day_cfg.get("main_lift")
+    tm = TRAINING_MAX.get(lift)
+    tid = MAIN_LIFT_TIDS.get(lift)
+    week_cfg = CYCLE_WEEKS.get(week_in_cycle, CYCLE_WEEKS[1])
+
+    if not tm or not tid:
+        return []
+
+    # ── Main lift sets ──
+    main_sets = []
+
+    # Warmup: 40%, 50%, 60%
+    for pct in [0.40, 0.50, 0.60]:
+        w = round_to_plate(tm * pct)
+        main_sets.append({"type": "warmup", "weight_kg": w, "reps": 5})
+
+    # Working 531 sets
+    for s in week_cfg["sets"]:
+        w = round_to_plate(tm * s["pct"])
+        reps = s["reps"]
+        # AMRAP shows as the minimum reps target in routine
+        if isinstance(reps, str):
+            reps = int(reps.replace("+", ""))
+        main_sets.append({"type": "normal", "weight_kg": w, "reps": reps})
+
+    # BBB 5×10
+    bbb_pct = BBB_PCT_PROGRESSION.get(cycle_num, 0.50)
+    bbb_w = round_to_plate(tm * bbb_pct)
+    for _ in range(5):
+        main_sets.append({"type": "normal", "weight_kg": bbb_w, "reps": 10})
+
+    # Rest time: longer for DL/Squat
+    rest = 180 if lift in ("deadlift", "squat") else 120
+
+    exercises = [{"exercise_template_id": tid, "rest_seconds": rest, "sets": main_sets}]
+
+    # ── Accessories (static templates from config) ──
+    accessories = DAY_ACCESSORIES.get(day_num, [])
+    exercises.extend(accessories)
+
+    return exercises
+
+
+def update_hevy_routines(df: pd.DataFrame) -> dict:
+    """
+    Update all 4 BBB routines in Hevy with correct weights for the current week/cycle.
+    Returns {day_num: {status, week, cycle, lift}}.
+    """
+    import requests
+    import time
+    import os
+
+    api_key = os.environ.get("HEVY_API_KEY", "")
+    headers = {
+        "accept": "application/json",
+        "api-key": api_key,
+        "Content-Type": "application/json",
+    }
+
+    # Determine current position
+    if df.empty:
+        total_sessions = 0
+    else:
+        total_sessions = df["hevy_id"].nunique()
+
+    completed_weeks = total_sessions // 4
+    week_in_cycle = (completed_weeks % 3) + 1
+    cycle_num = (completed_weeks // 3) + 1
+
+    week_name = CYCLE_WEEKS.get(week_in_cycle, {}).get("name", f"Week {week_in_cycle}")
+    results = {}
+
+    for day_num, routine_id in DAY_ROUTINE_MAP.items():
+        day_cfg = DAY_CONFIG_531.get(day_num, {})
+        lift = day_cfg.get("main_lift", "?")
+        title = day_cfg.get("name", f"BBB día {day_num}")
+
+        exercises = build_routine_exercises(day_num, week_in_cycle, cycle_num)
+        if not exercises:
+            results[day_num] = {"status": "skipped", "reason": "no TM"}
+            continue
+
+        payload = {
+            "routine": {
+                "title": title,
+                "exercises": exercises,
+            }
+        }
+
+        time.sleep(0.5)
+        try:
+            r = requests.put(
+                f"https://api.hevyapp.com/v1/routines/{routine_id}",
+                headers=headers, json=payload
+            )
+            if r.ok:
+                results[day_num] = {
+                    "status": "updated",
+                    "lift": lift,
+                    "week": week_name,
+                    "cycle": cycle_num,
+                }
+            else:
+                results[day_num] = {"status": "error", "code": r.status_code, "msg": r.text[:200]}
+        except Exception as e:
+            results[day_num] = {"status": "error", "msg": str(e)}
+
+    return results

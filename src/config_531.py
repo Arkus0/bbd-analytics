@@ -181,9 +181,71 @@ EXCEPTION_WORKOUT_IDS = {
 # ── Routine IDs in BBB folder ────────────────────────────────────────
 BBB_ROUTINE_IDS = {
     "619fb49a-7d62-4de5-9567-86e616103b5b",  # BBB día 1 - OHP
-    "03568ae1-833e-4e84-af2a-f1ffe914e91b",  # BBB día 2 - Deadlift
+    "47a7c25b-fac8-4979-b853-dc7284ca9e80",  # BBB día 2 - Deadlift
     "5bec1b7b-25d8-4c84-be6e-35f915a9a3fc",  # BBB día 3 - Bench
     "331eb58f-e25e-47c0-b375-5e526ceab5e1",  # BBB día 4 - Squat
+}
+
+# Ordered map: day_num → routine_id (for updating routines)
+DAY_ROUTINE_MAP = {
+    1: "619fb49a-7d62-4de5-9567-86e616103b5b",  # OHP
+    2: "47a7c25b-fac8-4979-b853-dc7284ca9e80",  # Deadlift
+    3: "5bec1b7b-25d8-4c84-be6e-35f915a9a3fc",  # Bench
+    4: "331eb58f-e25e-47c0-b375-5e526ceab5e1",  # Squat
+}
+
+# Accessory templates per day (kept static, Juan adjusts weights manually)
+DAY_ACCESSORIES = {
+    1: [  # OHP day
+        {"exercise_template_id": "0B841777", "rest_seconds": 90, "sets": [
+            {"type": "normal", "weight_kg": 80, "reps": 10},
+            {"type": "normal", "weight_kg": 80, "reps": 10},
+        ]},
+        {"exercise_template_id": "875F585F", "rest_seconds": 60, "sets": [
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+        ]},
+        {"exercise_template_id": "23A48484", "rest_seconds": 60, "sets": [
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+        ]},
+    ],
+    2: [  # DL day
+        {"exercise_template_id": "0B841777", "rest_seconds": 90, "sets": [
+            {"type": "normal", "weight_kg": 80, "reps": 10},
+            {"type": "normal", "weight_kg": 80, "reps": 10},
+        ]},
+        {"exercise_template_id": "23A48484", "rest_seconds": 60, "sets": [
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+        ]},
+    ],
+    3: [  # Bench day
+        {"exercise_template_id": "0B841777", "rest_seconds": 90, "sets": [
+            {"type": "normal", "weight_kg": 80, "reps": 10},
+            {"type": "normal", "weight_kg": 80, "reps": 10},
+        ]},
+        {"exercise_template_id": "875F585F", "rest_seconds": 60, "sets": [
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+        ]},
+    ],
+    4: [  # Squat day
+        {"exercise_template_id": "23A48484", "rest_seconds": 60, "sets": [
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+            {"type": "normal", "weight_kg": 60, "reps": 10},
+        ]},
+        {"exercise_template_id": "875F585F", "rest_seconds": 60, "sets": [
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+            {"type": "normal", "weight_kg": 40, "reps": 10},
+        ]},
+    ],
 }
 
 # ── Strength Standards (Wendler-style, multiples of BW) ──────────────

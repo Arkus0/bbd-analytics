@@ -12,7 +12,7 @@ from src.config import NOTION_BBD_LOGBOOK_DB
 # 531 imports
 from src.analytics_531 import (
     fetch_bbb_workouts, workouts_to_dataframe_531, add_cycle_info,
-    global_summary_531, pr_table_531,
+    global_summary_531, pr_table_531, update_hevy_routines,
 )
 from src.notion_531 import sync_531_logbook, update_531_analytics_page
 
@@ -132,6 +132,18 @@ def run_531_sync(dry_run: bool = False) -> dict:
     if not dry_run:
         print()
         update_531_analytics_page(df)
+
+    # 5. Update Hevy routines with correct weights for current week/cycle
+    if not dry_run:
+        print("\n🔄 Updating Hevy routines...")
+        routine_results = update_hevy_routines(df)
+        for day, info in sorted(routine_results.items()):
+            if info["status"] == "updated":
+                print(f"   ✅ Day {day} ({info['lift']}): {info['week']} C{info['cycle']}")
+            elif info["status"] == "skipped":
+                print(f"   ⏭️ Day {day}: {info.get('reason', 'skipped')}")
+            else:
+                print(f"   ❌ Day {day}: {info.get('msg', 'error')}")
 
     # Summary
     summary = global_summary_531(df)
