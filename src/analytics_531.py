@@ -45,6 +45,10 @@ def is_bbb_workout(workout: dict) -> bool:
     # Method 2: workout ID is in manual exception list
     if workout.get("id") in EXCEPTION_WORKOUT_IDS:
         return True
+    # Method 3: title starts with "BBB" (fallback for routine_id mismatches)
+    title = workout.get("title", "")
+    if title.upper().startswith("BBB"):
+        return True
     return False
 
 

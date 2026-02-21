@@ -176,6 +176,7 @@ EXERCISE_DB_531 = {
 # Workouts done without routine_id that should be included
 EXCEPTION_WORKOUT_IDS = {
     "edf3607a-8a50-470c-ae79-7d1b739d8c5d",  # BBB Day 1 — 2026-02-20 (first session, logged manually)
+    "864e5e48-2e8f-491a-b7a8-a2b79797cf74",  # BBB Day 2 — 2026-02-21 (routine_id mismatch)
 }
 
 # ── Routine IDs in BBB folder ────────────────────────────────────────
