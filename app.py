@@ -46,7 +46,7 @@ import re as _re
 # ── Page Config ──────────────────────────────────────────────────────
 st.set_page_config(page_title="BBD Analytics", page_icon="🔥", layout="wide", initial_sidebar_state="expanded")
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def _notion_last_edit() -> pd.Timestamp | None:
     """Check when the Notion analytics page was last updated (= last successful cron)."""
     try:
@@ -68,7 +68,7 @@ def _notion_last_edit() -> pd.Timestamp | None:
     return None
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def load_hall_of_titans() -> list[dict]:
     """Fetch Hall of Titans entries from Notion database."""
     token = NOTION_TOKEN or st.secrets.get("NOTION_TOKEN", "")
@@ -153,14 +153,14 @@ PL = dict(
 BODYWEIGHT = 86.0  # kg — update from Seguimiento
 
 # ── Data Loading ─────────────────────────────────────────────────────
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def load_raw_data():
     """Cache raw Hevy data only — derived columns computed fresh each time."""
     workouts = fetch_bbd_workouts()
     return workouts_to_dataframe(workouts)
 
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=120)
 def load_531_data():
     """Cache 531 BBB data."""
     workouts = _fetch_bbb_workouts()
