@@ -228,6 +228,15 @@ with st.sidebar:
     else:
         st.caption(f"📡 Última carga: hace {mins_ago} min")
 
+    # Debug: show loaded session counts
+    if is_531:
+        try:
+            _dbg = load_531_data()
+            _n = _dbg["hevy_id"].nunique() if not _dbg.empty else 0
+            st.caption(f"📦 {_n} sesiones 531 cargadas")
+        except Exception:
+            st.caption("📦 Error cargando 531")
+
     # Cron health: check Notion analytics page last edit
     notion_edit = _notion_last_edit()
     if notion_edit is not None:
