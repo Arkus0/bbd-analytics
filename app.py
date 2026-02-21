@@ -228,24 +228,14 @@ with st.sidebar:
     else:
         st.caption(f"📡 Última carga: hace {mins_ago} min")
 
-    # Debug: show loaded session counts
+    # Session count indicator
     if is_531:
         try:
             _dbg = load_531_data()
             _n = _dbg["hevy_id"].nunique() if not _dbg.empty else 0
             st.caption(f"📦 {_n} sesiones 531 cargadas")
-            if _n < 2:
-                from src.analytics_531 import fetch_bbb_workouts
-                _raw = fetch_bbb_workouts()
-                st.caption(f"🔍 fetch_bbb: {len(_raw)} workouts")
-                from src.hevy_client import fetch_all_workouts
-                _all = fetch_all_workouts()
-                _bbb_titles = [(w.get('title','?')[:25], w.get('routine_id','none')) for w in _all if 'BBB' in w.get('title','').upper() or w.get('id') in {'edf3607a-8a50-470c-ae79-7d1b739d8c5d','864e5e48-2e8f-491a-b7a8-a2b79797cf74'}]
-                st.caption(f"🔍 all_wk: {len(_all)} total, bbb_match: {_bbb_titles}")
-                from src.config_531 import BBB_ROUTINE_IDS
-                st.caption(f"🔍 config IDs: {BBB_ROUTINE_IDS}")
-        except Exception as e:
-            st.caption(f"📦 Error: {e}")
+        except Exception:
+            pass
 
     # Cron health: check Notion analytics page last edit
     notion_edit = _notion_last_edit()
