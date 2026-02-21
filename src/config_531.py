@@ -287,3 +287,4 @@ def expected_weights(lift: str, week: int) -> list[dict] | None:
             "pct": s["pct"],
         })
     return result
+
