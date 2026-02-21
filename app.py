@@ -200,9 +200,18 @@ except Exception as e:
     st.stop()
 
 # ── Sidebar ──────────────────────────────────────────────────────────
+# Detect which program has the most recent session
+_last_bbd = df["date"].max() if not df.empty else pd.Timestamp.min
+try:
+    _df_531_check = load_531_data()
+    _last_531 = _df_531_check["date"].max() if not _df_531_check.empty else pd.Timestamp.min
+except Exception:
+    _last_531 = pd.Timestamp.min
+_default_idx = 1 if _last_531 > _last_bbd else 0
+
 with st.sidebar:
     st.markdown("# 🔥 BBD Analytics")
-    program = st.selectbox("Programa", ["🔥 BBD", "💀 531 BBB"], label_visibility="collapsed")
+    program = st.selectbox("Programa", ["🔥 BBD", "💀 531 BBB"], index=_default_idx, label_visibility="collapsed")
     is_531 = program == "💀 531 BBB"
     if is_531:
         st.caption(f"Wendler's 531 Boring But Big — desde {pd.Timestamp(PROGRAM_START_531).strftime('%d %b %Y')}")
