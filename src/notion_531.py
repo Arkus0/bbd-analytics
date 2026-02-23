@@ -490,3 +490,161 @@ def update_531_analytics_page(df: pd.DataFrame):
     # ── Append all blocks ──
     _append_blocks(page_id, blocks)
     print(f"  ✅ 531 Analytics page updated ({len(blocks)} blocks)")
+
+
+def build_notion_calendar_blocks(calendar_data: dict) -> list:
+    """Build Notion blocks for annual calendar view."""
+    weeks = calendar_data["weeks"]
+    
+    blocks = []
+    
+    # Header
+    blocks.append({
+        "object": "block",
+        "type": "heading_2",
+        "heading_2": {"rich_text": [{"type": "text", "text": {"content": "📅 Calendario Anual 2026"}}]}
+    })
+    
+    # Legend
+    blocks.append({
+        "object": "block",
+        "type": "paragraph",
+        "paragraph": {
+            "rich_text": [
+                {"type": "text", "text": {"content": "🟦 5s week  "}},
+                {"type": "text", "text": {"content": "🟨 3s week  "}},
+                {"type": "text", "text": {"content": "🟥 531 week  "}},
+                {"type": "text", "text": {"content": "🟩 Deload"}},
+            ]
+        }
+    })
+    
+    # Group by macro
+    for macro in range(1, calendar_data["total_macros"] + 1):
+        macro_weeks = [w for w in weeks if w["macro_num"] == macro]
+        if not macro_weeks:
+            continue
+        
+        blocks.append({
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {"rich_text": [{"type": "text", "text": {"content": f"Macro {macro}"}}]}
+        })
+        
+        # Week row as text
+        week_emojis = []
+        for w in macro_weeks:
+            if w["is_deload"]:
+                emoji = "🟩"
+            elif w["type"] == "5s":
+                emoji = "🟦"
+            elif w["type"] == "3s":
+                emoji = "🟨"
+            elif w["type"] == "531":
+                emoji = "🟥"
+            else:
+                emoji = "⬜"
+            
+            if w["status"] == "completed":
+                emoji += "✅"
+            elif w["status"] == "current":
+                emoji += "👉"
+            
+            week_emojis.append(f"W{w['week_in_macro']}: {emoji}")
+        
+        blocks.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": " | ".join(week_emojis)}}]
+            }
+        })
+        
+        # TM row
+        tm_texts = []
+        for w in macro_weeks:
+            tms = w["tms"]
+            tm_texts.append(f"W{w['week_in_macro']}: O{tms['ohp']:.0f} D{tms['deadlift']:.0f}")
+        
+        blocks.append({
+            "object": "block",
+            "type": "quote",
+            "quote": {
+                "rich_text": [{"type": "text", "text": {"content": " | ".join(tm_texts)}}]
+            }
+        })
+    
+    return blocks
+
+
+def build_notion_kanban_blocks(kanban_data: dict) -> list:
+    """Build Notion blocks for Kanban view."""
+    blocks = []
+    
+    blocks.append({
+        "object": "block",
+        "type": "heading_2",
+        "heading_2": {"rich_text": [{"type": "text", "text": {"content": "🏋️ Kanban del Ciclo"}}]}
+    })
+    
+    # POR HACER
+    todo = kanban_data.get("todo", [])
+    if todo:
+        blocks.append({
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {"rich_text": [{"type": "text", "text": {"content": "📋 POR HACER"}}]}
+        })
+        for item in todo:
+            blocks.append({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": f"🏋️ {item['lift_name']}: "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": f"{item['weight']:.0f}kg ({item['reps']})"}},
+                    ]
+                }
+            })
+    
+    # HECHO
+    done = kanban_data.get("done", [])
+    if done:
+        blocks.append({
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {"rich_text": [{"type": "text", "text": {"content": "✅ HECHO"}}]}
+        })
+        for item in done:
+            blocks.append({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": f"✅ {item['lift_name']}: "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": f"{item['weight']:.0f}kg (completado)"}},
+                    ]
+                }
+            })
+    
+    # PRÓXIMO
+    upcoming = kanban_data.get("upcoming", [])
+    if upcoming:
+        blocks.append({
+            "object": "block",
+            "type": "heading_3",
+            "heading_3": {"rich_text": [{"type": "text", "text": {"content": "➡️ PRÓXIMO"}}]}
+        })
+        for item in upcoming:
+            blocks.append({
+                "object": "block",
+                "type": "bulleted_list_item",
+                "bulleted_list_item": {
+                    "rich_text": [
+                        {"type": "text", "text": {"content": f"➡️ {item['lift_name']}: "}, "annotations": {"bold": True}},
+                        {"type": "text", "text": {"content": f"{item['weight']:.0f}kg ({item['reps']})"}},
+                    ]
+                }
+            })
+    
+    return blocks
