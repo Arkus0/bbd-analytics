@@ -1364,3 +1364,119 @@ def build_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
         "current_week": current_week,
         "total_macros": max(w["macro_num"] for w in weeks_data),
     }
+
+
+def get_kanban_data(df: pd.DataFrame) -> dict:
+    """
+    Get data for Kanban columns: todo, done, upcoming.
+    
+    Returns:
+        {
+            "todo": [{"lift", "weight", "sets", "reps", "week", "macro"}, ...],
+            "done": [...],
+            "upcoming": [...],
+        }
+    """
+    from src.config_531 import (
+        DAY_CONFIG_531, CYCLE_WEEKS, SESSIONS_PER_WEEK,
+        get_cycle_position, get_effective_tm
+    )
+    
+    if df.empty:
+        return {"todo": [], "done": [], "upcoming": []}
+    
+    lifts = ["ohp", "deadlift", "bench", "squat"]
+    lift_names = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+    
+    total_sessions = df["hevy_id"].nunique()
+    current_pos = get_cycle_position(total_sessions)
+    
+    # Get current week data
+    current_week_data = None
+    for w in training_calendar(df, weeks_ahead=4):
+        if w["status"] == "current":
+            current_week_data = w
+            break
+    
+    if not current_week_data:
+        return {"todo": [], "done": [], "upcoming": []}
+    
+    # Determine which lifts are done this week
+    done_lifts = set()
+    if current_week_data["sessions"]:
+        for s in current_week_data["sessions"]:
+            done_lifts.add(s["lift"])
+    
+    # Build todo (current week, not done)
+    todo = []
+    week_type = current_week_data["week_type"]
+    week_config = CYCLE_WEEKS.get(week_type, {})
+    
+    for lift in lifts:
+        if lift not in done_lifts:
+            tm = current_week_data["tms"].get(lift, 0)
+            sets_config = week_config.get("sets", [])
+            
+            # Format: "5×5" or "5/3/1+"
+            if len(sets_config) == 3:
+                reps_str = f"{sets_config[0]['reps']}/{sets_config[1]['reps']}/{sets_config[2]['reps']}"
+            else:
+                reps_str = f"{sets_config[0]['reps']}×5" if sets_config else "?"
+            
+            todo.append({
+                "lift": lift,
+                "lift_name": lift_names[lift],
+                "weight": tm,
+                "sets": len(sets_config),
+                "reps": reps_str,
+                "week": current_week_data["abs_week"],
+                "macro": current_week_data["macro_num"],
+                "week_name": current_week_data["week_name"],
+            })
+    
+    # Build done (current week, completed)
+    done = []
+    for lift in done_lifts:
+        tm = current_week_data["tms"].get(lift, 0)
+        done.append({
+            "lift": lift,
+            "lift_name": lift_names.get(lift, lift),
+            "weight": tm,
+            "sets": 3,  # Simplificado
+            "reps": "✓",
+            "week": current_week_data["abs_week"],
+            "macro": current_week_data["macro_num"],
+            "week_name": current_week_data["week_name"],
+        })
+    
+    # Build upcoming (next week)
+    upcoming = []
+    next_week = None
+    for w in training_calendar(df, weeks_ahead=4):
+        if w["abs_week"] == current_week_data["abs_week"] + 1:
+            next_week = w
+            break
+    
+    if next_week:
+        week_type = next_week["week_type"]
+        week_config = CYCLE_WEEKS.get(week_type, {})
+        for lift in lifts:
+            tm = next_week["tms"].get(lift, 0)
+            sets_config = week_config.get("sets", [])
+            if len(sets_config) == 3:
+                reps_str = f"{sets_config[0]['reps']}/{sets_config[1]['reps']}/{sets_config[2]['reps']}"
+            else:
+                reps_str = f"{sets_config[0]['reps']}×5" if sets_config else "?"
+            
+            upcoming.append({
+                "lift": lift,
+                "lift_name": lift_names[lift],
+                "weight": tm,
+                "sets": len(sets_config),
+                "reps": reps_str,
+                "week": next_week["abs_week"],
+                "macro": next_week["macro_num"],
+                "week_name": next_week["week_name"],
+            })
+    
+    return {"todo": todo, "done": done, "upcoming": upcoming}
