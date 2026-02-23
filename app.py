@@ -21,6 +21,8 @@ from src.analytics_531 import (
     joker_sets_summary, validate_tm, cycle_comparison,
     fsl_compliance,
     training_calendar,
+    build_annual_calendar,
+    get_kanban_data,
 )
 from src.config_531 import (
     DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
@@ -289,6 +291,119 @@ with st.sidebar:
         "🏆 PRs",
         "🎯 Adherencia",
     ], label_visibility="collapsed")
+
+# ══════════════════════════════════════════════════════════════════════
+# Calendar & Kanban render functions
+# ══════════════════════════════════════════════════════════════════════
+def render_annual_calendar(calendar_data: dict):
+    """Render annual calendar grid using Plotly heatmap."""
+    import plotly.graph_objects as go
+    
+    weeks = calendar_data["weeks"]
+    current_week = calendar_data["current_week"]
+    
+    # Build data for heatmap (4 rows × 13 cols = 52 weeks)
+    z = []
+    text = []
+    hover = []
+    
+    for row in range(4):
+        z_row = []
+        text_row = []
+        hover_row = []
+        for col in range(13):
+            idx = row * 13 + col
+            if idx < len(weeks):
+                w = weeks[idx]
+                type_val = {"5s": 1, "3s": 2, "531": 3, "deload": 4}.get(w["type"], 0)
+                z_row.append(type_val)
+                text_row.append(str(w["abs_week"]))
+                
+                tms = w["tms"]
+                hover_text = (
+                    f"<b>Semana {w['abs_week']}</b><br>"
+                    f"Macro {w['macro_num']} · {w['week_name']}<br>"
+                    f"TMs: OHP {tms['ohp']:.0f} · DL {tms['deadlift']:.0f} · "
+                    f"B {tms['bench']:.0f} · S {tms['squat']:.0f}<br>"
+                    f"Estado: {w['status']}"
+                )
+                hover_row.append(hover_text)
+            else:
+                z_row.append(None)
+                text_row.append("")
+                hover_row.append("")
+        z.append(z_row)
+        text.append(text_row)
+        hover.append(hover_row)
+    
+    colorscale = [
+        [0, "#e5e7eb"],
+        [0.25, "#3b82f6"],
+        [0.5, "#f59e0b"],
+        [0.75, "#ef4444"],
+        [1, "#22c55e"],
+    ]
+    
+    fig = go.Figure(data=go.Heatmap(
+        z=z, text=text, texttemplate="%{text}", textfont={"size": 10},
+        hoverongaps=False, hoverinfo="text", hovertext=hover,
+        colorscale=colorscale, showscale=False,
+    ))
+    
+    fig.update_layout(
+        title="Calendario Anual 5/3/1 (52 semanas)",
+        xaxis={"showgrid": False, "showticklabels": False},
+        yaxis={"showgrid": False, "showticklabels": False},
+        height=250,
+        margin={"t": 40, "b": 20, "l": 20, "r": 20},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Legend
+    col1, col2, col3, col4 = st.columns(4)
+    with col1: st.markdown("🟦 **5s week**")
+    with col2: st.markdown("🟨 **3s week**")
+    with col3: st.markdown("🟥 **531 week**")
+    with col4: st.markdown("🟩 **Deload**")
+
+
+def render_kanban(kanban_data: dict):
+    """Render Kanban board with 3 columns."""
+    todo = kanban_data.get("todo", [])
+    done = kanban_data.get("done", [])
+    upcoming = kanban_data.get("upcoming", [])
+    
+    st.markdown("### 🏋️ Kanban del Ciclo Actual")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**POR HACER**")
+        for item in todo:
+            with st.container(border=True):
+                st.markdown(f"🏋️ **{item['lift_name']}**")
+                st.markdown(f"{item['weight']:.0f}kg")
+                st.caption(f"{item['reps']} · W{item['week']}")
+    
+    with col2:
+        st.markdown("**HECHO** ✅")
+        for item in done:
+            with st.container(border=True):
+                st.markdown(f"✅ **{item['lift_name']}**")
+                st.markdown(f"{item['weight']:.0f}kg")
+                st.caption(f"Completado · W{item['week']}")
+    
+    with col3:
+        st.markdown("**PRÓXIMO** ➡️")
+        for item in upcoming:
+            with st.container(border=True):
+                st.markdown(f"➡️ **{item['lift_name']}**")
+                st.markdown(f"{item['weight']:.0f}kg")
+                st.caption(f"{item['reps']} · W{item['week']}")
+
 
 # ══════════════════════════════════════════════════════════════════════
 # 💀 531 BBB DASHBOARD
@@ -710,42 +825,39 @@ if is_531:
             )
 
     elif page == "📅 Calendario":
-        st.markdown("## 📅 Calendario Beyond 5/3/1")
-
-        weeks_ahead = st.slider("Semanas a proyectar", 4, 24, 16, key="cal_weeks")
-        cal = training_calendar(df_531, weeks_ahead=weeks_ahead)
-
-        if not cal:
+        st.markdown("## 📅 Calendario Anual Beyond 5/3/1")
+        
+        cal_data = build_annual_calendar(df_531, year=2026)
+        kanban_data = get_kanban_data(df_531)
+        
+        if not cal_data["weeks"]:
             st.info("Sin datos para generar calendario.")
         else:
-            # ── Current position ──
-            current = next((w for w in cal if w["status"] == "current"), None)
-            partial = next((w for w in cal if w["status"] == "partial"), None)
-            active = partial or current
-            if active:
-                tms = active["tms"]
+            current = next((w for w in cal_data["weeks"] if w["status"] == "current"), None)
+            if current:
                 st.markdown(
-                    f"**Posición actual:** Macro {active['macro_num']} · "
-                    f"Semana {active['week_in_macro']} ({active['week_name']}) · "
-                    f"Mini-ciclo {'A' if active['mini_cycle'] == 1 else 'B' if active['mini_cycle'] == 2 else '–'} · "
-                    f"TM bumps: {active['tm_bumps']}"
+                    f"**Posición actual:** Macro {current['macro_num']} · "
+                    f"Semana {current['week_in_macro']} ({current['week_name']}) · "
+                    f"Semana absoluta {current['abs_week']}"
                 )
-
+            
             st.divider()
-
-            # ── TM Progression Timeline ──
-            st.markdown("### 📈 Progresión de TM")
-            # Build a table showing TM at each bump point
+            render_annual_calendar(cal_data)
+            st.divider()
+            render_kanban(kanban_data)
+            st.divider()
+            
+            # TM Progression table
+            st.markdown("### 📈 Progresión de Training Maxes")
             bump_points = []
             seen_bumps = set()
-            for w in cal:
+            for w in cal_data["weeks"]:
                 b = w["tm_bumps"]
                 if b not in seen_bumps:
                     seen_bumps.add(b)
                     tms = w["tms"]
                     bump_points.append({
-                        "Bumps": b,
-                        "Desde semana": f"W{w['abs_week']}",
+                        "Bumps": b, "Desde semana": f"W{w['abs_week']}",
                         "OHP": f"{tms['ohp']:.0f} kg",
                         "Deadlift": f"{tms['deadlift']:.0f} kg",
                         "Bench": f"{tms['bench']:.0f} kg",
@@ -753,71 +865,6 @@ if is_531:
                     })
             if bump_points:
                 st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
-
-            st.divider()
-
-            # ── Deload calendar ──
-            deloads = [w for w in cal if w["is_deload"]]
-            if deloads:
-                st.markdown("### 🛌 Semanas de Deload")
-                for d in deloads:
-                    tms = d["tms"]
-                    icon = "✅" if d["status"] == "completed" else "⬜"
-                    st.markdown(
-                        f"{icon} **Semana {d['abs_week']}** (Macro {d['macro_num']}) — "
-                        f"TMs: OHP {tms['ohp']:.0f} · DL {tms['deadlift']:.0f} · "
-                        f"B {tms['bench']:.0f} · S {tms['squat']:.0f}"
-                    )
-                st.divider()
-
-            # ── Full timeline ──
-            st.markdown("### 🗓️ Timeline completa")
-
-            lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
-
-            for w in cal:
-                status = w["status"]
-                if status == "completed":
-                    icon = "✅"
-                    color = "green"
-                elif status == "partial":
-                    icon = "🔶"
-                    color = "orange"
-                elif status == "current":
-                    icon = "👉"
-                    color = "blue"
-                else:
-                    icon = "⬜"
-                    color = "gray"
-
-                deload_tag = " 🛌 **DELOAD**" if w["is_deload"] else ""
-                bump_tag = " ⬆️ *TM bump después*" if w["is_bump_week"] else ""
-
-                tms = w["tms"]
-                tm_str = " · ".join(f"{lift_labels[l]} {tms[l]:.0f}" for l in lift_labels)
-
-                header = (
-                    f"{icon} **W{w['abs_week']}** — M{w['macro_num']}·W{w['week_in_macro']} "
-                    f"**{w['week_name']}** ({w['sessions_done']}/4){deload_tag}{bump_tag}"
-                )
-
-                with st.expander(header, expanded=(status in ("partial", "current"))):
-                    st.caption(f"TMs: {tm_str}")
-
-                    if w["sessions"]:
-                        for s in w["sessions"]:
-                            d = s["date"]
-                            ds = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else str(d)[:10]
-                            lift = lift_labels.get(s["lift"], s["lift"])
-                            amrap = f" — AMRAP: **{s['amrap']}**" if s["amrap"] else ""
-                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;📌 {ds} **{lift}**{amrap}")
-                    elif status == "upcoming":
-                        if w["is_deload"]:
-                            st.caption("Semana ligera: 40/50/60% × 5 reps")
-                        else:
-                            week_type = w["week_type"]
-                            scheme = {1: "65/75/85% × 5", 2: "70/80/90% × 3", 3: "75/85/95% × 5/3/1+"}.get(week_type, "?")
-                            st.caption(f"Esquema: {scheme}")
 
     st.stop()  # Don't fall through to BBD sections
 
