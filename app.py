@@ -821,6 +821,53 @@ if is_531:
                             st.caption(f"Esquema: {scheme}")
 
     # ══════════════════════════════════════════════════════════════════════
+    # 🗓️ VISTA ANUAL
+    # ══════════════════════════════════════════════════════════════════════
+    elif page == "🗓️ Vista Anual":
+        st.markdown("## 🗓️ Calendario Anual 5/3/1")
+        
+        cal_data = build_annual_calendar(df_531, year=2026)
+        
+        if not cal_data["weeks"]:
+            st.info("Sin datos para generar calendario.")
+        else:
+            # Summary
+            current = next((w for w in cal_data["weeks"] if w["status"] == "current"), None)
+            if current:
+                st.markdown(
+                    f"**Posición actual:** Macro {current['macro_num']} · "
+                    f"Semana {current['week_in_macro']} ({current['week_name']}) · "
+                    f"Semana {current['abs_week']} de 52"
+                )
+            
+            st.divider()
+            
+            # Calendar
+            render_monthly_calendar(cal_data)
+            
+            st.divider()
+            
+            # TM Progression table
+            st.markdown("### 📈 Progresión de Training Maxes")
+            bump_points = []
+            seen_bumps = set()
+            for w in cal_data["weeks"]:
+                b = w["tm_bumps"]
+                if b not in seen_bumps:
+                    seen_bumps.add(b)
+                    tms = w["tms"]
+                    bump_points.append({
+                        "Bumps": b,
+                        "Desde": f"W{w['abs_week']}",
+                        "OHP": f"{tms['ohp']:.0f}",
+                        "DL": f"{tms['deadlift']:.0f}",
+                        "Bench": f"{tms['bench']:.0f}",
+                        "Squat": f"{tms['squat']:.0f}",
+                    })
+            if bump_points:
+                st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
     # Función para calendario anual mensual
     # ══════════════════════════════════════════════════════════════════════
     def render_monthly_calendar(cal_data: dict):
