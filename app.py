@@ -603,12 +603,12 @@ def render_kanban(kanban_data: dict):
                 st.markdown(f"{item['weight']:.0f}kg")
                 st.caption(f"{item['reps']} · W{item['week']}")
 
-    if df_531.empty:
+    if df_531.empty and page != "📅 Calendario":
         st.warning("No hay entrenamientos 531 BBB registrados todavía.")
         st.info("Asegúrate de iniciar el workout desde la rutina BBB en Hevy para que se detecte automáticamente.")
         st.stop()
 
-    summary_531 = global_summary_531(df_531)
+    summary_531 = global_summary_531(df_531) if not df_531.empty else {}
 
     if page == "📊 Dashboard":
         st.markdown("## 💀 531 BBB — Dashboard")
