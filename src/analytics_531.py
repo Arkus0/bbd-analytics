@@ -29,6 +29,11 @@ from src.config_531 import (
     DAY_ROUTINE_MAP,
     DAY_ACCESSORIES,
     round_to_plate,
+    get_cycle_position,
+    get_effective_tm,
+    expected_weights,
+    MACRO_CYCLE_LENGTH,
+    WORKING_BLOCK_LENGTH,
 )
 
 
@@ -139,13 +144,18 @@ def parse_workout_sets(workout: dict) -> list[dict]:
 
 def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
     """
-    Classify individual sets of a main lift exercise.
+    Classify individual sets of a main lift exercise using TM-based detection.
 
-    Strategy: 531 working sets are the heaviest cluster (ascending weight).
-    Supplemental is detected as BBB (5x10 at lower weight) or FSL (First Set
-    Last — weight matches first working set, typically 3-5x5-8).
-    Everything lighter before the working sets is warmup.
-    Joker sets are heavy singles/doubles/triples after the AMRAP.
+    Uses known Training Max to identify working sets by matching expected
+    percentages (65/75/85, 70/80/90, or 75/85/95 of TM), then classifies:
+
+    - warmup: lighter sets before the working sets
+    - working_531: the 3 prescribed 531 sets (ascending weight)
+    - amrap: the last working set (heaviest of the 3, often high reps)
+    - joker: sets HEAVIER than the top working weight, low reps (1-5)
+    - bbb: 5×10 supplemental at ~50% TM (consistent low weight, high reps)
+    - fsl: First Set Last — weight ≈ first working set, moderate reps (5-8)
+    - bbb_amrap: last BBB set if reps significantly exceed the others
 
     Returns list of {type, weight, reps, set_num}.
     """
@@ -153,22 +163,137 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
     for i, s in enumerate(sets):
         w = float(s.get("weight_kg", 0) or 0)
         r = int(s.get("reps", 0) or 0)
+        stype = s.get("type", "normal")
         if r > 0:
-            parsed.append({"weight": w, "reps": r, "idx": i})
+            parsed.append({"weight": w, "reps": r, "idx": i, "hevy_type": stype})
 
     if not parsed:
         return []
 
-    # Find the peak weight (should be the AMRAP/top set)
+    tm = TRAINING_MAX.get(lift)
+    if not tm:
+        # Fallback: old heuristic if no TM
+        return _classify_main_lift_sets_fallback(parsed)
+
+    # ── Step 1: Detect which week type by matching expected weights ──
+    best_week = None
+    best_score = -1
+    working_indices = None
+
+    for week_num in [1, 2, 3]:
+        exp = expected_weights(lift, week_num, tm_override=tm)
+        if not exp:
+            continue
+
+        exp_weights = [e["weight"] for e in exp]
+        # Find 3 consecutive ascending sets matching these weights (±2kg tolerance)
+        for start in range(len(parsed) - 2):
+            candidates = parsed[start:start + 3]
+            if candidates[0]["hevy_type"] == "warmup":
+                continue
+            score = 0
+            for cand, ew in zip(candidates, exp_weights):
+                if abs(cand["weight"] - ew) <= 2:
+                    score += 1
+            if score > best_score:
+                best_score = score
+                best_week = week_num
+                working_indices = set(p["idx"] for p in candidates)
+
+    # If no good match (score < 2), try looser matching
+    if best_score < 2:
+        # Fallback: look for 3 ascending normal-type sets in the middle range
+        return _classify_main_lift_sets_fallback(parsed)
+
+    # ── Step 2: Identify working set weights ──
+    working_sets = [p for p in parsed if p["idx"] in working_indices]
+    top_working_weight = max(w["weight"] for w in working_sets)
+    first_working_weight = min(w["weight"] for w in working_sets)
+    top_working_idx = max(w["idx"] for w in working_sets)
+
+    # ── Step 3: Classify all sets ──
+    result = []
+    supplemental_sets = []
+    set_num = 0
+
+    for p in parsed:
+        set_num += 1
+        w, r, idx = p["weight"], p["reps"], p["idx"]
+
+        if idx in working_indices:
+            # Is this the top (AMRAP) set?
+            if idx == top_working_idx:
+                result.append({"type": "amrap", "weight": w, "reps": r, "set_num": set_num})
+            else:
+                result.append({"type": "working_531", "weight": w, "reps": r, "set_num": set_num})
+
+        elif idx < min(working_indices):
+            # Before working sets → warmup
+            result.append({"type": "warmup", "weight": w, "reps": r, "set_num": set_num})
+
+        elif idx > top_working_idx and w > top_working_weight:
+            # After working sets AND heavier → joker
+            result.append({"type": "joker", "weight": w, "reps": r, "set_num": set_num})
+
+        elif idx > top_working_idx:
+            # After working/joker sets, lower weight → supplemental (classify later)
+            supplemental_sets.append({"weight": w, "reps": r, "set_num": set_num, "idx": idx})
+
+        else:
+            # Edge case
+            result.append({"type": "warmup", "weight": w, "reps": r, "set_num": set_num})
+
+    # ── Step 4: Classify supplemental sets (BBB vs FSL) ──
+    if supplemental_sets:
+        supp_weights = [s["weight"] for s in supplemental_sets]
+        primary_weight = max(set(supp_weights), key=supp_weights.count)  # most common weight
+
+        # FSL: weight matches first working set (±2kg), reps typically 5-8
+        is_fsl = abs(primary_weight - first_working_weight) <= 2
+        avg_reps_supp = sum(s["reps"] for s in supplemental_sets) / len(supplemental_sets)
+
+        if is_fsl and avg_reps_supp <= 8:
+            supp_type = "fsl"
+        else:
+            supp_type = "bbb"
+
+        # Check if last supplemental set is an AMRAP (reps >> average of others)
+        if len(supplemental_sets) >= 3:
+            others = supplemental_sets[:-1]
+            last = supplemental_sets[-1]
+            avg_others = sum(s["reps"] for s in others) / len(others)
+            if last["reps"] > avg_others * 1.5 and last["reps"] > 12:
+                # Last set is a supplemental AMRAP
+                for s in supplemental_sets[:-1]:
+                    result.append({"type": supp_type, "weight": s["weight"], "reps": s["reps"], "set_num": s["set_num"]})
+                result.append({"type": f"{supp_type}_amrap", "weight": last["weight"], "reps": last["reps"], "set_num": last["set_num"]})
+            else:
+                for s in supplemental_sets:
+                    result.append({"type": supp_type, "weight": s["weight"], "reps": s["reps"], "set_num": s["set_num"]})
+        else:
+            for s in supplemental_sets:
+                result.append({"type": supp_type, "weight": s["weight"], "reps": s["reps"], "set_num": s["set_num"]})
+
+    # Sort by set_num
+    result.sort(key=lambda x: x["set_num"])
+    return result
+
+
+def _classify_main_lift_sets_fallback(parsed: list[dict]) -> list[dict]:
+    """
+    Fallback classification when TM is not available.
+    Uses heuristic: find 3 ascending sets, everything before = warmup,
+    after = supplemental. No joker detection without TM.
+    """
+    if not parsed:
+        return []
+
     max_weight = max(p["weight"] for p in parsed)
     peak_idx = max(p["idx"] for p in parsed if p["weight"] == max_weight)
 
-    # Separate into phases
     result = []
-    bbb_weight = None
-
-    # After the peak, look for supplemental pattern (repeated weight)
     post_peak = [p for p in parsed if p["idx"] > peak_idx]
+    bbb_weight = None
     if post_peak:
         weight_counts = {}
         for p in post_peak:
@@ -176,69 +301,23 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
         if weight_counts:
             bbb_weight = max(weight_counts, key=weight_counts.get)
 
-    # Detect joker sets: post-peak sets heavier than AMRAP weight with low reps
-    amrap_weight = max_weight
-    joker_indices = set()
-    if post_peak:
-        for p in post_peak:
-            if p["weight"] > amrap_weight and p["reps"] <= 5:
-                joker_indices.add(p["idx"])
-
-    # First pass: classify each set (supplemental as "_supplemental" placeholder)
+    pre_peak = [p for p in parsed if p["idx"] <= peak_idx]
     set_num = 0
     for p in parsed:
         set_num += 1
         w, r, idx = p["weight"], p["reps"], p["idx"]
-
-        if idx in joker_indices:
-            result.append({"type": "joker", "weight": w, "reps": r, "set_num": set_num})
-        elif idx > peak_idx and bbb_weight is not None and w == bbb_weight:
-            result.append({"type": "_supplemental", "weight": w, "reps": r, "set_num": set_num})
+        if idx > peak_idx and bbb_weight is not None and w == bbb_weight:
+            result.append({"type": "bbb", "weight": w, "reps": r, "set_num": set_num})
         elif idx <= peak_idx:
-            result.append({"type": "_pre_peak", "weight": w, "reps": r, "set_num": set_num, "idx": idx})
-        else:
-            result.append({"type": "_supplemental", "weight": w, "reps": r, "set_num": set_num})
-
-    # Classify pre-peak sets: last 3 ascending are working_531, rest are warmup
-    pre_peak = [r for r in result if r.get("type") == "_pre_peak"]
-    first_working_weight = None
-    if len(pre_peak) >= 3:
-        for i, entry in enumerate(pre_peak):
-            if i >= len(pre_peak) - 3:
-                if i == len(pre_peak) - 3:
-                    first_working_weight = entry["weight"]
-                if i == len(pre_peak) - 1:
-                    entry["type"] = "amrap"
+            if p in pre_peak[-3:]:
+                if p == pre_peak[-1]:
+                    result.append({"type": "amrap", "weight": w, "reps": r, "set_num": set_num})
                 else:
-                    entry["type"] = "working_531"
+                    result.append({"type": "working_531", "weight": w, "reps": r, "set_num": set_num})
             else:
-                entry["type"] = "warmup"
-    elif len(pre_peak) > 0:
-        first_working_weight = pre_peak[0]["weight"]
-        for i, entry in enumerate(pre_peak):
-            if i == len(pre_peak) - 1:
-                entry["type"] = "amrap"
-            else:
-                entry["type"] = "working_531"
-
-    # Determine supplemental type: FSL vs BBB
-    # FSL = supplemental weight matches first working set (±2kg tolerance for rounding)
-    supplemental_type = "bbb"
-    if first_working_weight is not None and bbb_weight is not None:
-        if abs(bbb_weight - first_working_weight) <= 2:
-            # Weight matches first working set — check reps pattern
-            supp_sets = [r for r in result if r.get("type") == "_supplemental"]
-            avg_reps = sum(s["reps"] for s in supp_sets) / len(supp_sets) if supp_sets else 0
-            if avg_reps <= 8:
-                supplemental_type = "fsl"
-
-    # Apply final supplemental label
-    for r in result:
-        if r["type"] == "_supplemental":
-            r["type"] = supplemental_type
-        r.pop("idx", None)
-        if r["type"] == "_pre_peak":
-            r["type"] = "warmup"
+                result.append({"type": "warmup", "weight": w, "reps": r, "set_num": set_num})
+        else:
+            result.append({"type": "bbb", "weight": w, "reps": r, "set_num": set_num})
 
     return result
 
@@ -283,13 +362,11 @@ def workouts_to_dataframe_531(workouts: list[dict]) -> pd.DataFrame:
 
 def add_cycle_info(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Add cycle_num and cycle_week columns.
+    Add cycle info columns using Beyond 5/3/1 structure.
 
-    Cycle detection: each unique session date is a training day.
-    Every 4 training days = 1 cycle week.
-    Every 4 cycle weeks (or 3 working + 1 deload) = 1 cycle.
-
-    Simplified: since BBB has 4 days/week, we assign based on session order.
+    Beyond scheme: 7-week macro = 3 working + 3 working + 1 deload.
+    TM bumps after each 3-week mini-cycle.
+    Each 'week' = 4 training sessions.
     """
     if df.empty:
         return df
@@ -298,26 +375,27 @@ def add_cycle_info(df: pd.DataFrame) -> pd.DataFrame:
 
     # Get unique training dates in order
     dates = sorted(df["date"].unique())
-
-    # Each date = one training day. 4 days = 1 week. 4 weeks = 1 cycle.
-    # But Juan might not train exactly 4 days/week, so we go by session count.
     date_to_session = {d: i + 1 for i, d in enumerate(dates)}
-
     df["session_num"] = df["date"].map(date_to_session)
 
-    # Cycle week: which week within the cycle (1-4)
-    # Every 4 sessions = 1 cycle week iteration
-    # Week 1: sessions 1-4, Week 2: sessions 5-8, etc.
-    df["cycle_week"] = ((df["session_num"] - 1) // 4) + 1
+    # Use get_cycle_position for each session
+    def _pos(session_num):
+        # session_num is 1-based, get_cycle_position takes total completed sessions
+        return get_cycle_position(session_num - 1)
 
-    # Cycle number: every 4 weeks (16 sessions) = 1 cycle
-    # But more practically: every 3 weeks (12 sessions) + optional deload
-    # For now, simple: every 12 sessions = 1 cycle (3 working weeks)
-    df["cycle_num"] = ((df["session_num"] - 1) // 12) + 1
+    positions = {sn: _pos(sn) for sn in df["session_num"].unique()}
 
-    # Also assign a within-cycle week (1, 2, 3, or 4=deload)
-    sessions_in_cycle = ((df["session_num"] - 1) % 12)
-    df["week_in_cycle"] = (sessions_in_cycle // 4) + 1
+    df["week_in_macro"] = df["session_num"].map(lambda sn: positions[sn]["week_in_macro"])
+    df["week_type"] = df["session_num"].map(lambda sn: positions[sn]["week_type"])
+    df["week_name"] = df["session_num"].map(lambda sn: positions[sn]["week_name"])
+    df["mini_cycle"] = df["session_num"].map(lambda sn: positions[sn]["mini_cycle"])
+    df["macro_num"] = df["session_num"].map(lambda sn: positions[sn]["macro_num"])
+    df["tm_bumps"] = df["session_num"].map(lambda sn: positions[sn]["tm_bumps_completed"])
+
+    # Keep backwards-compatible column names
+    df["cycle_num"] = df["macro_num"]
+    df["week_in_cycle"] = df["week_type"]
+    df["cycle_week"] = df["week_in_macro"]
 
     return df
 
@@ -832,10 +910,11 @@ def format_plates(plates: list[float]) -> str:
 def next_session_plan(df: pd.DataFrame) -> dict:
     """
     Figure out what's next and return full workout plan.
+    Uses Beyond 5/3/1 cycle position and effective TM (with bumps).
 
     Returns {
-        day_num, day_name, lift, lift_label, cycle_num, week_in_cycle, week_name,
-        tm, working_sets, bbb, warmup
+        day_num, day_name, lift, lift_label, macro_num, week_in_macro,
+        week_name, mini_cycle, tm, working_sets, bbb, warmup
     }
     """
     DAY_ORDER = [1, 2, 3, 4]
@@ -853,16 +932,17 @@ def next_session_plan(df: pd.DataFrame) -> dict:
         next_day_idx = (last_day_idx + 1) % 4
         next_day = DAY_ORDER[next_day_idx]
 
-    # Every 4 sessions = 1 week, every 3 weeks = 1 cycle
-    completed_weeks = total_sessions // 4
-    week_in_cycle = (completed_weeks % 3) + 1
-    cycle_num = (completed_weeks // 3) + 1
+    pos = get_cycle_position(total_sessions)
+    week_type = pos["week_type"]
+    macro_num = pos["macro_num"]
+    tm_bumps = pos["tm_bumps_completed"]
 
     day_cfg = DAY_CONFIG_531.get(next_day, {})
     lift = day_cfg.get("main_lift", "?")
-    week_cfg = CYCLE_WEEKS.get(week_in_cycle, CYCLE_WEEKS[1])
+    week_cfg = CYCLE_WEEKS.get(week_type, CYCLE_WEEKS[1])
 
-    tm = TRAINING_MAX.get(lift)
+    # Effective TM after all bumps
+    tm = get_effective_tm(lift, tm_bumps)
 
     plan = {
         "day_num": next_day,
@@ -870,16 +950,22 @@ def next_session_plan(df: pd.DataFrame) -> dict:
         "focus": day_cfg.get("focus", ""),
         "lift": lift,
         "lift_label": {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift),
-        "cycle_num": cycle_num,
-        "week_in_cycle": week_in_cycle,
-        "week_name": week_cfg["name"],
+        "macro_num": macro_num,
+        "week_in_macro": pos["week_in_macro"],
+        "mini_cycle": pos["mini_cycle"],
+        "week_type": week_type,
+        "week_name": pos["week_name"],
         "tm": tm,
+        "tm_bumps": tm_bumps,
         "working_sets": [],
         "bbb": None,
         "warmup": [],
+        # Backwards compat
+        "cycle_num": macro_num,
+        "week_in_cycle": week_type,
     }
 
-    if tm is None:
+    if not tm:
         return plan
 
     # ── Warmup sets ──
@@ -910,7 +996,9 @@ def next_session_plan(df: pd.DataFrame) -> dict:
         })
 
     # ── BBB supplemental ──
-    bbb_pct = BBB_PCT_PROGRESSION.get(cycle_num, 0.50)
+    # Cycle for BBB progression is based on total macro cycles completed
+    bbb_cycle_key = min(macro_num, max(BBB_PCT_PROGRESSION.keys()))
+    bbb_pct = BBB_PCT_PROGRESSION.get(bbb_cycle_key, 0.50)
     bbb_w = round_to_plate(tm * bbb_pct)
     bbb_plates = plate_breakdown(bbb_w)
     plan["bbb"] = {
@@ -928,23 +1016,24 @@ def next_session_plan(df: pd.DataFrame) -> dict:
 def full_week_plan(df: pd.DataFrame) -> list[dict]:
     """
     Return the plan for all 4 days of the current cycle week.
-    Useful for weekly overview.
+    Uses Beyond 5/3/1 position and effective TM.
     """
     if df.empty:
         total_sessions = 0
     else:
         total_sessions = df["hevy_id"].nunique()
 
-    completed_weeks = total_sessions // 4
-    week_in_cycle = (completed_weeks % 3) + 1
-    cycle_num = (completed_weeks // 3) + 1
-    week_cfg = CYCLE_WEEKS.get(week_in_cycle, CYCLE_WEEKS[1])
+    pos = get_cycle_position(total_sessions)
+    week_type = pos["week_type"]
+    macro_num = pos["macro_num"]
+    tm_bumps = pos["tm_bumps_completed"]
+    week_cfg = CYCLE_WEEKS.get(week_type, CYCLE_WEEKS[1])
 
     plans = []
     for day_num in [1, 2, 3, 4]:
         day_cfg = DAY_CONFIG_531.get(day_num, {})
         lift = day_cfg.get("main_lift", "?")
-        tm = TRAINING_MAX.get(lift)
+        tm = get_effective_tm(lift, tm_bumps)
         label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift)
 
         day_plan = {
@@ -968,7 +1057,8 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
                     "is_amrap": isinstance(s["reps"], str) and "+" in str(s["reps"]),
                 })
 
-            bbb_pct = BBB_PCT_PROGRESSION.get(cycle_num, 0.50)
+            bbb_cycle_key = min(macro_num, max(BBB_PCT_PROGRESSION.keys()))
+            bbb_pct = BBB_PCT_PROGRESSION.get(bbb_cycle_key, 0.50)
             bbb_w = round_to_plate(tm * bbb_pct)
             day_plan["bbb_weight"] = bbb_w
             day_plan["bbb_plates"] = format_plates(plate_breakdown(bbb_w))
@@ -982,16 +1072,16 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
 # HEVY ROUTINE AUTO-UPDATER
 # ═════════════════════════════════════════════════════════════════════
 
-def build_routine_exercises(day_num: int, week_in_cycle: int, cycle_num: int) -> list:
+def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bumps: int) -> list:
     """
     Build the full exercise list for a Hevy routine with correct weights
-    for the given week/cycle.
+    for the given week/cycle, using effective TM after bumps.
     """
     day_cfg = DAY_CONFIG_531.get(day_num, {})
     lift = day_cfg.get("main_lift")
-    tm = TRAINING_MAX.get(lift)
+    tm = get_effective_tm(lift, tm_bumps)
     tid = MAIN_LIFT_TIDS.get(lift)
-    week_cfg = CYCLE_WEEKS.get(week_in_cycle, CYCLE_WEEKS[1])
+    week_cfg = CYCLE_WEEKS.get(week_type, CYCLE_WEEKS[1])
 
     if not tm or not tid:
         return []
@@ -1014,7 +1104,8 @@ def build_routine_exercises(day_num: int, week_in_cycle: int, cycle_num: int) ->
         main_sets.append({"type": "normal", "weight_kg": w, "reps": reps})
 
     # BBB 5×10
-    bbb_pct = BBB_PCT_PROGRESSION.get(cycle_num, 0.50)
+    bbb_cycle_key = min(macro_num, max(BBB_PCT_PROGRESSION.keys()))
+    bbb_pct = BBB_PCT_PROGRESSION.get(bbb_cycle_key, 0.50)
     bbb_w = round_to_plate(tm * bbb_pct)
     for _ in range(5):
         main_sets.append({"type": "normal", "weight_kg": bbb_w, "reps": 10})
@@ -1033,8 +1124,9 @@ def build_routine_exercises(day_num: int, week_in_cycle: int, cycle_num: int) ->
 
 def update_hevy_routines(df: pd.DataFrame) -> dict:
     """
-    Update all 4 BBB routines in Hevy with correct weights for the current week/cycle.
-    Returns {day_num: {status, week, cycle, lift}}.
+    Update all 4 BBB routines in Hevy with correct weights for the current
+    week/cycle using Beyond 5/3/1 structure and effective TM.
+    Returns {day_num: {status, week, macro, lift, tm}}.
     """
     import requests
     import time
@@ -1053,19 +1145,20 @@ def update_hevy_routines(df: pd.DataFrame) -> dict:
     else:
         total_sessions = df["hevy_id"].nunique()
 
-    completed_weeks = total_sessions // 4
-    week_in_cycle = (completed_weeks % 3) + 1
-    cycle_num = (completed_weeks // 3) + 1
+    pos = get_cycle_position(total_sessions)
+    week_type = pos["week_type"]
+    macro_num = pos["macro_num"]
+    tm_bumps = pos["tm_bumps_completed"]
 
-    week_name = CYCLE_WEEKS.get(week_in_cycle, {}).get("name", f"Week {week_in_cycle}")
     results = {}
 
     for day_num, routine_id in DAY_ROUTINE_MAP.items():
         day_cfg = DAY_CONFIG_531.get(day_num, {})
         lift = day_cfg.get("main_lift", "?")
         title = day_cfg.get("name", f"BBB día {day_num}")
+        effective_tm = get_effective_tm(lift, tm_bumps)
 
-        exercises = build_routine_exercises(day_num, week_in_cycle, cycle_num)
+        exercises = build_routine_exercises(day_num, week_type, macro_num, tm_bumps)
         if not exercises:
             results[day_num] = {"status": "skipped", "reason": "no TM"}
             continue
@@ -1087,8 +1180,11 @@ def update_hevy_routines(df: pd.DataFrame) -> dict:
                 results[day_num] = {
                     "status": "updated",
                     "lift": lift,
-                    "week": week_name,
-                    "cycle": cycle_num,
+                    "week": pos["week_name"],
+                    "macro": macro_num,
+                    "tm": effective_tm,
+                    "tm_bumps": tm_bumps,
+                    "week_in_macro": pos["week_in_macro"],
                 }
             else:
                 results[day_num] = {"status": "error", "code": r.status_code, "msg": r.text[:200]}

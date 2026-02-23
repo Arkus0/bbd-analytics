@@ -37,9 +37,21 @@ TM_INCREMENT = {
     "squat":    4,
 }
 
-# ── 531 Cycle Structure ──────────────────────────────────────────────
-# Each cycle = 3 working weeks + 1 deload (optional)
-# Percentages are of Training Max
+# ── 531 Cycle Structure — Beyond 5/3/1 ───────────────────────────────
+# Macro cycle = 7 weeks: 3 working + 3 working + 1 deload
+# TM bumps after each 3-week mini-cycle (+2kg upper, +4kg lower)
+# No deload between mini-cycles — deload only on week 7.
+#
+# Week 1: 5s   (mini-cycle A)
+# Week 2: 3s   (mini-cycle A)
+# Week 3: 531  (mini-cycle A) → bump TM
+# Week 4: 5s   (mini-cycle B, new TM)
+# Week 5: 3s   (mini-cycle B)
+# Week 6: 531  (mini-cycle B) → bump TM
+# Week 7: Deload
+MACRO_CYCLE_LENGTH = 7  # weeks in a full macro cycle
+WORKING_BLOCK_LENGTH = 3  # weeks in each working mini-cycle
+
 CYCLE_WEEKS = {
     1: {  # "5s week"
         "name": "Semana 5s",
@@ -57,15 +69,15 @@ CYCLE_WEEKS = {
             {"pct": 0.90, "reps": "3+"},  # AMRAP
         ],
     },
-    3: {  # "1s week"
-        "name": "Semana 1s",
+    3: {  # "1s week" / "531 week"
+        "name": "Semana 531",
         "sets": [
             {"pct": 0.75, "reps": 5},
             {"pct": 0.85, "reps": 3},
             {"pct": 0.95, "reps": "1+"},  # AMRAP
         ],
     },
-    4: {  # Deload
+    4: {  # Deload (only used on week 7 of macro)
         "name": "Deload",
         "sets": [
             {"pct": 0.40, "reps": 5},
@@ -268,12 +280,80 @@ def round_to_plate(weight: float) -> float:
     return round(weight / 2) * 2
 
 
-def expected_weights(lift: str, week: int) -> list[dict] | None:
+def get_cycle_position(total_sessions: int) -> dict:
+    """
+    Calculate current position in the Beyond 5/3/1 macro cycle.
+
+    Beyond scheme: 3 working weeks + 3 working weeks + 1 deload = 7-week macro.
+    TM bumps after each 3-week mini-cycle (after week 3 and week 6).
+
+    Each 'week' = 4 training sessions (one per main lift).
+
+    Returns:
+        week_in_macro: 1-7 (position in 7-week macro)
+        week_type: 1, 2, or 3 (maps to 5s, 3s, 531) or 4 (deload)
+        mini_cycle: 1 or 2 (which 3-week block we're in, or None for deload)
+        macro_num: which macro cycle we're on (1-based)
+        tm_bumps_completed: how many TM bumps have occurred
+    """
+    completed_weeks = total_sessions // 4
+    macro_num = (completed_weeks // MACRO_CYCLE_LENGTH) + 1
+    week_in_macro = (completed_weeks % MACRO_CYCLE_LENGTH) + 1  # 1-7
+
+    if week_in_macro <= 3:
+        # Mini-cycle A
+        week_type = week_in_macro  # 1=5s, 2=3s, 3=531
+        mini_cycle = 1
+    elif week_in_macro <= 6:
+        # Mini-cycle B
+        week_type = week_in_macro - 3  # 1=5s, 2=3s, 3=531
+        mini_cycle = 2
+    else:
+        # Deload (week 7)
+        week_type = 4
+        mini_cycle = None
+
+    # TM bumps: one after each completed 3-week block
+    # Completed blocks = completed full 3-week sections
+    total_completed_blocks = 0
+    for m in range(macro_num):
+        if m < macro_num - 1:
+            total_completed_blocks += 2  # Previous macros contributed 2 blocks each
+        else:
+            # Current macro
+            if week_in_macro > 3:
+                total_completed_blocks += 1  # Finished mini-cycle A
+            if week_in_macro > 6:
+                total_completed_blocks += 1  # Finished mini-cycle B
+
+    return {
+        "week_in_macro": week_in_macro,
+        "week_type": week_type,
+        "week_name": CYCLE_WEEKS.get(week_type, {}).get("name", "?"),
+        "mini_cycle": mini_cycle,
+        "macro_num": macro_num,
+        "tm_bumps_completed": total_completed_blocks,
+        "completed_weeks": completed_weeks,
+    }
+
+
+def get_effective_tm(lift: str, tm_bumps: int) -> float:
+    """
+    Calculate the effective TM for a lift after N bumps from the base TM.
+    Base TM is stored in TRAINING_MAX (set at program start).
+    Each bump adds TM_INCREMENT for that lift.
+    """
+    base = TRAINING_MAX.get(lift, 0) or 0
+    increment = TM_INCREMENT.get(lift, 2)
+    return base + (increment * tm_bumps)
+
+
+def expected_weights(lift: str, week: int, tm_override: float = None) -> list[dict] | None:
     """
     Get expected working set weights for a lift on a given cycle week.
     Returns list of {weight, reps, pct} or None if TM not set.
     """
-    tm = get_tm(lift)
+    tm = tm_override or get_tm(lift)
     if tm is None:
         return None
     week_config = CYCLE_WEEKS.get(week)
