@@ -139,7 +139,7 @@ def run_531_sync(dry_run: bool = False) -> dict:
         routine_results = update_hevy_routines(df)
         for day, info in sorted(routine_results.items()):
             if info["status"] == "updated":
-                print(f"   ✅ Day {day} ({info['lift']}): {info['week']} C{info['cycle']}")
+                print(f"   ✅ Day {day} ({info['lift']}): {info['week']} M{info['macro']} (TM:{info['tm']}kg, bumps:{info['tm_bumps']})")
             elif info["status"] == "skipped":
                 print(f"   ⏭️ Day {day}: {info.get('reason', 'skipped')}")
             else:
