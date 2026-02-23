@@ -18,6 +18,7 @@ from src.analytics_531 import (
     session_summary_531, pr_table_531, lift_progression,
     strength_level_531, weekly_volume_531, muscle_volume_531,
     next_session_plan, full_week_plan,
+    joker_sets_summary, validate_tm, cycle_comparison,
 )
 from src.config_531 import (
     DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
@@ -142,6 +143,19 @@ st.markdown("""
     div[data-testid="stMetric"] label { color: #94a3b8 !important; font-size: 0.85rem; }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: #f1f5f9 !important; }
     h1, h2, h3 { font-family: 'Space Grotesk', sans-serif !important; }
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+        div[data-testid="stHorizontalBlock"] > div {
+            flex: 1 1 100% !important; min-width: 100% !important;
+        }
+        .stApp h1 { font-size: 1.4rem !important; }
+        .stApp h2 { font-size: 1.2rem !important; }
+        .stApp h3 { font-size: 1.05rem !important; }
+        div[data-testid="stMetric"] { padding: 10px !important; }
+        iframe { max-height: 220px !important; }
+        div[data-testid="stExpander"] summary { font-size: 0.9rem !important; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -420,6 +434,23 @@ if is_531:
                     f"{row['n_sets']} sets × {row['avg_reps']} reps avg (total: {row['total_reps']})"
                 )
 
+        # Joker sets
+        jokers = joker_sets_summary(df_531)
+        if not jokers.empty:
+            st.divider()
+            st.markdown("### 🃏 Joker Sets")
+            st.caption("Sets pesados extra post-AMRAP — singles/doubles/triples por encima del top set.")
+            jk_cols = st.columns(2)
+            jk_cols[0].metric("Total Joker Sets", int(jokers["total_sets"].sum()))
+            jk_cols[1].metric("Mejor e1RM (Joker)", f"{jokers['best_e1rm'].max():.1f} kg")
+            for _, jrow in jokers.iterrows():
+                lift_label = lift_labels.get(jrow["lift"], str(jrow["lift"]))
+                st.markdown(
+                    f"🃏 **{lift_label}** — {jrow['date'].strftime('%d %b')} — "
+                    f"{jrow['weight_kg']}kg × {jrow['best_reps']} ({jrow['total_sets']} sets) → "
+                    f"e1RM: **{jrow['best_e1rm']:.1f}kg**"
+                )
+
         # Accessory summary
         acc = accessory_summary(df_531)
         if not acc.empty:
@@ -433,6 +464,30 @@ if is_531:
     elif page == "🎯 AMRAP Tracker":
         st.markdown("## 🎯 AMRAP Tracker")
         st.caption("La serie AMRAP es el pulso de tu progresión en 531.")
+
+        # TM Validation alerts
+        tm_val = validate_tm(df_531)
+        if tm_val:
+            for lift, info in tm_val.items():
+                lift_label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift)
+                if info["status"] == "too_light":
+                    st.warning(
+                        f"⚠️ **{lift_label}**: TM parece bajo — promedio +{info['avg_reps_over_min']} reps sobre mínimo. "
+                        f"TM actual: {info['current_tm']}kg → Recomendado: **{info['recommended_tm']}kg** "
+                        f"(+{info['tm_delta']}kg)"
+                    )
+                elif info["status"] == "too_heavy":
+                    st.error(
+                        f"🔴 **{lift_label}**: TM parece alto — promedio {info['avg_reps_over_min']} reps sobre mínimo. "
+                        f"TM actual: {info['current_tm']}kg → Recomendado: **{info['recommended_tm']}kg** "
+                        f"({info['tm_delta']}kg)"
+                    )
+                else:
+                    st.success(
+                        f"✅ **{lift_label}**: TM calibrado — +{info['avg_reps_over_min']} reps/AMRAP. "
+                        f"e1RM: {info['latest_e1rm']}kg, TM: {info['current_tm']}kg"
+                    )
+            st.divider()
 
         amraps = amrap_tracking(df_531)
         if amraps.empty:
@@ -510,6 +565,42 @@ if is_531:
             )
             fig.update_layout(**PL)
             st.plotly_chart(fig, use_container_width=True)
+
+        # Cycle comparison
+        st.divider()
+        st.markdown("### 🔄 Ciclo vs Ciclo")
+        cyc = cycle_comparison(df_531)
+        if not cyc.empty and cyc["cycle_num"].nunique() >= 1:
+            # Table
+            cyc_display = cyc.copy()
+            cyc_display["lift"] = cyc_display["lift"].map(
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+            )
+            cols_show = ["cycle_num", "lift", "amrap_avg_reps", "amrap_best_e1rm", "bbb_total_volume"]
+            col_names = ["Ciclo", "Lift", "AMRAP Reps (avg)", "Mejor e1RM", "BBB Volumen"]
+            if "e1rm_delta" in cyc_display.columns:
+                cols_show.append("e1rm_delta")
+                col_names.append("Δ e1RM (kg)")
+            display_df = cyc_display[cols_show].copy()
+            display_df.columns = col_names
+            st.dataframe(display_df, use_container_width=True, hide_index=True)
+
+            # Chart: grouped bar of best e1RM per lift per cycle
+            if cyc["cycle_num"].nunique() >= 2:
+                cyc_chart = cyc.copy()
+                cyc_chart["lift"] = cyc_chart["lift"].map(
+                    {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                )
+                cyc_chart["cycle_label"] = "Ciclo " + cyc_chart["cycle_num"].astype(str)
+                fig = px.bar(
+                    cyc_chart, x="lift", y="amrap_best_e1rm", color="cycle_label",
+                    barmode="group", title="Mejor e1RM por lift y ciclo",
+                    labels={"lift": "", "amrap_best_e1rm": "e1RM (kg)", "cycle_label": ""},
+                )
+                fig.update_layout(**PL)
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Se necesita al menos 1 ciclo completo para comparar.")
 
         # Muscle volume
         st.divider()
