@@ -180,6 +180,14 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
         if weight_counts:
             bbb_weight = max(weight_counts, key=weight_counts.get)
 
+    # Detect joker sets: post-peak sets heavier than AMRAP weight with low reps
+    amrap_weight = max_weight  # The peak weight is the AMRAP weight
+    joker_indices = set()
+    if post_peak:
+        for p in post_peak:
+            if p["weight"] > amrap_weight and p["reps"] <= 5:
+                joker_indices.add(p["idx"])
+
     # Now classify each set
     working_531_found = False
     ascending_phase = True
@@ -190,16 +198,17 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
         set_num += 1
         w, r, idx = p["weight"], p["reps"], p["idx"]
 
-        if idx > peak_idx and bbb_weight is not None and w == bbb_weight:
+        if idx in joker_indices:
+            # Joker set: heavy single/double/triple after AMRAP
+            result.append({"type": "joker", "weight": w, "reps": r, "set_num": set_num})
+        elif idx > peak_idx and bbb_weight is not None and w == bbb_weight:
             # BBB supplemental
             result.append({"type": "bbb", "weight": w, "reps": r, "set_num": set_num})
         elif idx <= peak_idx:
             # Pre-peak: could be warmup or working 531
-            # Working 531 sets: the last 3 sets before/including peak in ascending order
-            # We'll mark these after collecting all
             result.append({"type": "_pre_peak", "weight": w, "reps": r, "set_num": set_num, "idx": idx})
         else:
-            # Post-peak, not BBB weight — could be extra BBB or odd set
+            # Post-peak, not BBB weight and not joker — extra BBB or odd set
             result.append({"type": "bbb", "weight": w, "reps": r, "set_num": set_num})
 
     # Now classify pre-peak sets: last 3 ascending are working_531, rest are warmup
@@ -569,6 +578,123 @@ def strength_level_531(df: pd.DataFrame) -> dict:
         }
 
     return result
+
+
+def joker_sets_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate joker set data: date, lift, weight, reps, e1rm."""
+    jokers = df[df["set_type"] == "joker"].copy()
+    if jokers.empty:
+        return pd.DataFrame()
+
+    result = jokers.groupby(["date", "hevy_id", "lift"]).agg(
+        weight_kg=("weight_kg", "max"),
+        total_sets=("reps", "count"),
+        best_reps=("reps", "max"),
+        best_e1rm=("e1rm", "max"),
+    ).reset_index()
+
+    return result.sort_values("date", ascending=False).reset_index(drop=True)
+
+
+def validate_tm(df: pd.DataFrame) -> dict:
+    """
+    Check if Training Max is calibrated for each lift.
+
+    Uses AMRAP performance (reps over minimum) to determine if TM is
+    too light, too heavy, or correctly set.
+
+    Returns dict per lift:
+      - status: "ok" | "too_light" | "too_heavy"
+      - avg_reps_over_min: mean reps above prescribed minimum
+      - latest_e1rm: most recent AMRAP e1RM
+      - current_tm: from config
+      - recommended_tm: latest_e1rm * 0.90 rounded to plate
+    """
+    amraps = amrap_tracking(df)
+    if amraps.empty:
+        return {}
+
+    result = {}
+    for lift in amraps["lift"].unique():
+        lift_amraps = amraps[amraps["lift"] == lift].sort_values("date")
+        if lift_amraps.empty:
+            continue
+
+        avg_over = lift_amraps["reps_over_min"].mean()
+        latest_e1rm = lift_amraps["e1rm"].iloc[-1]
+        current_tm = TRAINING_MAX.get(lift, 0) or 0
+        recommended_tm = round_to_plate(latest_e1rm * 0.90)
+
+        if avg_over > 5:
+            status = "too_light"
+        elif avg_over < 0:
+            status = "too_heavy"
+        else:
+            status = "ok"
+
+        result[lift] = {
+            "status": status,
+            "avg_reps_over_min": round(avg_over, 1),
+            "latest_e1rm": round(latest_e1rm, 1),
+            "current_tm": current_tm,
+            "recommended_tm": recommended_tm,
+            "tm_delta": recommended_tm - current_tm,
+            "n_amraps": len(lift_amraps),
+        }
+
+    return result
+
+
+def cycle_comparison(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compare metrics across cycles per lift.
+
+    Groups by cycle_num and lift, aggregates AMRAP e1RM, BBB volume,
+    and total sets. Adds delta columns vs previous cycle.
+    """
+    if df.empty or "cycle_num" not in df.columns:
+        return pd.DataFrame()
+
+    amraps = df[df["set_type"] == "amrap"].copy()
+    bbb = df[df["set_type"] == "bbb"].copy()
+
+    if amraps.empty:
+        return pd.DataFrame()
+
+    # AMRAP metrics per cycle per lift
+    amrap_agg = amraps.groupby(["cycle_num", "lift"]).agg(
+        amrap_avg_reps=("reps", "mean"),
+        amrap_best_e1rm=("e1rm", "max"),
+        amrap_avg_e1rm=("e1rm", "mean"),
+        n_amraps=("reps", "count"),
+    ).reset_index()
+
+    amrap_agg["amrap_avg_reps"] = amrap_agg["amrap_avg_reps"].round(1)
+    amrap_agg["amrap_avg_e1rm"] = amrap_agg["amrap_avg_e1rm"].round(1)
+
+    # BBB volume per cycle per lift
+    if not bbb.empty:
+        bbb_agg = bbb.groupby(["cycle_num", "lift"]).agg(
+            bbb_total_volume=("volume_kg", "sum"),
+            bbb_sets=("reps", "count"),
+        ).reset_index()
+        result = amrap_agg.merge(bbb_agg, on=["cycle_num", "lift"], how="left")
+    else:
+        result = amrap_agg
+        result["bbb_total_volume"] = 0
+        result["bbb_sets"] = 0
+
+    result = result.fillna(0)
+
+    # Add deltas vs previous cycle
+    result = result.sort_values(["lift", "cycle_num"])
+    result["e1rm_delta"] = result.groupby("lift")["amrap_best_e1rm"].diff()
+    result["e1rm_delta_pct"] = (
+        result.groupby("lift")["amrap_best_e1rm"]
+        .pct_change() * 100
+    ).round(1)
+
+    return result.sort_values(["cycle_num", "lift"]).reset_index(drop=True)
 
 
 def weekly_volume_531(df: pd.DataFrame) -> pd.DataFrame:
