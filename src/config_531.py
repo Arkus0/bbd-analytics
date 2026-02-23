@@ -51,6 +51,7 @@ TM_INCREMENT = {
 # Week 7: Deload
 MACRO_CYCLE_LENGTH = 7  # weeks in a full macro cycle
 WORKING_BLOCK_LENGTH = 3  # weeks in each working mini-cycle
+SESSIONS_PER_WEEK = 4  # one session per main lift (OHP, DL, Bench, Squat)
 
 CYCLE_WEEKS = {
     1: {  # "5s week"

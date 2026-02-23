@@ -1193,3 +1193,118 @@ def update_hevy_routines(df: pd.DataFrame) -> dict:
             results[day_num] = {"status": "error", "msg": str(e)}
 
     return results
+
+
+# ── Training Calendar / Timeline ────────────────────────────────────
+
+def training_calendar(df: pd.DataFrame, weeks_ahead: int = 16) -> list[dict]:
+    """
+    Build a training calendar showing past completed weeks and future projections.
+    Returns a list of week dicts with TMs, status, deload flags, etc.
+    """
+    from src.config_531 import (
+        get_cycle_position, get_effective_tm, TRAINING_MAX,
+        SESSIONS_PER_WEEK, MACRO_CYCLE_LENGTH,
+    )
+
+    # Ensure cycle info is present
+    if not df.empty and "week_in_macro" not in df.columns:
+        df = add_cycle_info(df)
+
+    lifts = list(TRAINING_MAX.keys())
+    total_sessions = df["hevy_id"].nunique() if not df.empty else 0
+
+    # --- Past weeks: group actual sessions ---
+    past_weeks = {}
+    if not df.empty and "week_in_macro" in df.columns:
+        # Each unique (macro_num, week_in_macro) = one training week
+        session_dates = df.groupby("hevy_id").agg(
+            date=("date", "first"),
+            week_in_macro=("week_in_macro", "first"),
+            macro_num=("macro_num", "first"),
+            week_name=("week_name", "first"),
+            tm_bumps=("tm_bumps", "first"),
+        ).reset_index()
+
+        for (macro, week_m), grp in session_dates.groupby(["macro_num", "week_in_macro"]):
+            key = (int(macro), int(week_m))
+            sessions_in_week = []
+            for _, row in grp.iterrows():
+                hid = row["hevy_id"]
+                sess_df = df[df["hevy_id"] == hid]
+                main = sess_df[sess_df["set_type"].isin(["amrap", "working_531"])].head(1)
+                lift = main["lift"].iloc[0] if not main.empty else "?"
+                amrap = sess_df[sess_df["set_type"] == "amrap"]
+                amrap_str = ""
+                if not amrap.empty:
+                    a = amrap.iloc[0]
+                    amrap_str = f"{a['weight_kg']:.0f}kg × {a['reps']:.0f}"
+                sessions_in_week.append({
+                    "date": row["date"],
+                    "lift": lift,
+                    "amrap": amrap_str,
+                })
+            past_weeks[key] = {
+                "sessions": sorted(sessions_in_week, key=lambda s: s["date"]),
+                "week_name": grp["week_name"].iloc[0],
+                "tm_bumps": int(grp["tm_bumps"].iloc[0]),
+            }
+
+    # --- Build calendar: past + current + future ---
+    current_pos = get_cycle_position(total_sessions)
+    current_macro = current_pos["macro_num"]
+    current_week_m = current_pos["week_in_macro"]
+
+    calendar = []
+
+    # Determine range: from week 1 of macro 1 through weeks_ahead from now
+    # Each "week" = 4 sessions, so session_offset = (absolute_week - 1) * 4
+    # We need to figure out total weeks completed + future
+    weeks_completed = total_sessions // SESSIONS_PER_WEEK
+    total_weeks = weeks_completed + weeks_ahead
+
+    for abs_week in range(total_weeks):
+        session_offset = abs_week * SESSIONS_PER_WEEK
+        pos = get_cycle_position(session_offset)
+
+        tms = {lift: get_effective_tm(lift, pos["tm_bumps_completed"])
+               for lift in lifts}
+
+        key = (pos["macro_num"], pos["week_in_macro"])
+        is_deload = pos["week_type"] == 4
+        # TM bump happens after weeks 3 and 6
+        is_bump_week = pos["week_in_macro"] in (3, 6)
+
+        # Status
+        if key in past_weeks:
+            pw = past_weeks[key]
+            done_count = len(pw["sessions"])
+            if done_count >= SESSIONS_PER_WEEK:
+                status = "completed"
+            else:
+                status = "partial"
+            sessions = pw["sessions"]
+        elif abs_week == weeks_completed:
+            status = "current"
+            sessions = past_weeks.get(key, {}).get("sessions", [])
+        else:
+            status = "upcoming"
+            sessions = []
+
+        calendar.append({
+            "abs_week": abs_week + 1,
+            "macro_num": pos["macro_num"],
+            "week_in_macro": pos["week_in_macro"],
+            "mini_cycle": pos["mini_cycle"],
+            "week_name": pos["week_name"],
+            "week_type": pos["week_type"],
+            "is_deload": is_deload,
+            "is_bump_week": is_bump_week,
+            "tm_bumps": pos["tm_bumps_completed"],
+            "tms": tms,
+            "status": status,
+            "sessions": sessions,
+            "sessions_done": len(sessions),
+        })
+
+    return calendar
