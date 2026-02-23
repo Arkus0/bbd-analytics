@@ -492,6 +492,117 @@ if is_531:
 
         st.stop()
 
+
+def render_annual_calendar(calendar_data: dict):
+    """Render annual calendar grid using Plotly heatmap."""
+    weeks = calendar_data["weeks"]
+
+    # Build data for heatmap (4 rows × 13 cols = 52 weeks)
+    z = []
+    text = []
+    hover = []
+
+    for row in range(4):
+        z_row = []
+        text_row = []
+        hover_row = []
+        for col in range(13):
+            idx = row * 13 + col
+            if idx < len(weeks):
+                w = weeks[idx]
+                type_val = {"5s": 1, "3s": 2, "531": 3, "deload": 4}.get(w["type"], 0)
+                z_row.append(type_val)
+                text_row.append(str(w["abs_week"]))
+
+                tms = w["tms"]
+                hover_text = (
+                    f"<b>Semana {w['abs_week']}</b><br>"
+                    f"Macro {w['macro_num']} · {w['week_name']}<br>"
+                    f"TMs: OHP {tms['ohp']:.0f} · DL {tms['deadlift']:.0f} · "
+                    f"B {tms['bench']:.0f} · S {tms['squat']:.0f}<br>"
+                    f"Estado: {w['status']}"
+                )
+                hover_row.append(hover_text)
+            else:
+                z_row.append(None)
+                text_row.append("")
+                hover_row.append("")
+        z.append(z_row)
+        text.append(text_row)
+        hover.append(hover_row)
+
+    colorscale = [
+        [0, "#e5e7eb"],
+        [0.25, "#3b82f6"],
+        [0.5, "#f59e0b"],
+        [0.75, "#ef4444"],
+        [1, "#22c55e"],
+    ]
+
+    fig = go.Figure(data=go.Heatmap(
+        z=z, text=text, texttemplate="%{text}", textfont={"size": 10},
+        hoverongaps=False, hoverinfo="text", hovertext=hover,
+        colorscale=colorscale, showscale=False,
+    ))
+
+    fig.update_layout(
+        title="Calendario Anual 5/3/1 (52 semanas)",
+        xaxis={"showgrid": False, "showticklabels": False},
+        yaxis={"showgrid": False, "showticklabels": False},
+        height=250,
+        margin={"t": 40, "b": 20, "l": 20, "r": 20},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Legend
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown("🟦 **5s week**")
+    with col2:
+        st.markdown("🟨 **3s week**")
+    with col3:
+        st.markdown("🟥 **531 week**")
+    with col4:
+        st.markdown("🟩 **Deload**")
+
+
+def render_kanban(kanban_data: dict):
+    """Render Kanban board with 3 columns."""
+    todo = kanban_data.get("todo", [])
+    done = kanban_data.get("done", [])
+    upcoming = kanban_data.get("upcoming", [])
+
+    st.markdown("### 🏋️ Kanban del Ciclo Actual")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("**POR HACER**")
+        for item in todo:
+            with st.container(border=True):
+                st.markdown(f"🏋️ **{item['lift_name']}**")
+                st.markdown(f"{item['weight']:.0f}kg")
+                st.caption(f"{item['reps']} · W{item['week']}")
+
+    with col2:
+        st.markdown("**HECHO** ✅")
+        for item in done:
+            with st.container(border=True):
+                st.markdown(f"✅ **{item['lift_name']}**")
+                st.markdown(f"{item['weight']:.0f}kg")
+                st.caption(f"Completado · W{item['week']}")
+
+    with col3:
+        st.markdown("**PRÓXIMO** ➡️")
+        for item in upcoming:
+            with st.container(border=True):
+                st.markdown(f"➡️ **{item['lift_name']}**")
+                st.markdown(f"{item['weight']:.0f}kg")
+                st.caption(f"{item['reps']} · W{item['week']}")
+
     if df_531.empty:
         st.warning("No hay entrenamientos 531 BBB registrados todavía.")
         st.info("Asegúrate de iniciar el workout desde la rutina BBB en Hevy para que se detecte automáticamente.")
