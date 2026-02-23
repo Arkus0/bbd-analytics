@@ -141,9 +141,11 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
     """
     Classify individual sets of a main lift exercise.
 
-    Strategy: 531 working sets are the heaviest cluster (ascending weight),
-    BBB sets are the repeated-weight cluster (typically 5x10).
+    Strategy: 531 working sets are the heaviest cluster (ascending weight).
+    Supplemental is detected as BBB (5x10 at lower weight) or FSL (First Set
+    Last — weight matches first working set, typically 3-5x5-8).
     Everything lighter before the working sets is warmup.
+    Joker sets are heavy singles/doubles/triples after the AMRAP.
 
     Returns list of {type, weight, reps, set_num}.
     """
@@ -159,65 +161,52 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
 
     # Find the peak weight (should be the AMRAP/top set)
     max_weight = max(p["weight"] for p in parsed)
-
-    # Identify BBB cluster: sets with same weight and high reps (8+), appearing after peak
-    # Find sets after the peak that have repeated weight
     peak_idx = max(p["idx"] for p in parsed if p["weight"] == max_weight)
 
     # Separate into phases
     result = []
-    ascending_weights = []
     bbb_weight = None
 
-    # After the peak, look for BBB pattern (repeated weight, high reps)
+    # After the peak, look for supplemental pattern (repeated weight)
     post_peak = [p for p in parsed if p["idx"] > peak_idx]
     if post_peak:
-        # BBB sets: all post-peak sets with the same weight
         weight_counts = {}
         for p in post_peak:
             weight_counts[p["weight"]] = weight_counts.get(p["weight"], 0) + 1
-        # The most common weight in post-peak is likely BBB
         if weight_counts:
             bbb_weight = max(weight_counts, key=weight_counts.get)
 
     # Detect joker sets: post-peak sets heavier than AMRAP weight with low reps
-    amrap_weight = max_weight  # The peak weight is the AMRAP weight
+    amrap_weight = max_weight
     joker_indices = set()
     if post_peak:
         for p in post_peak:
             if p["weight"] > amrap_weight and p["reps"] <= 5:
                 joker_indices.add(p["idx"])
 
-    # Now classify each set
-    working_531_found = False
-    ascending_phase = True
-    prev_weight = 0
+    # First pass: classify each set (supplemental as "_supplemental" placeholder)
     set_num = 0
-
     for p in parsed:
         set_num += 1
         w, r, idx = p["weight"], p["reps"], p["idx"]
 
         if idx in joker_indices:
-            # Joker set: heavy single/double/triple after AMRAP
             result.append({"type": "joker", "weight": w, "reps": r, "set_num": set_num})
         elif idx > peak_idx and bbb_weight is not None and w == bbb_weight:
-            # BBB supplemental
-            result.append({"type": "bbb", "weight": w, "reps": r, "set_num": set_num})
+            result.append({"type": "_supplemental", "weight": w, "reps": r, "set_num": set_num})
         elif idx <= peak_idx:
-            # Pre-peak: could be warmup or working 531
             result.append({"type": "_pre_peak", "weight": w, "reps": r, "set_num": set_num, "idx": idx})
         else:
-            # Post-peak, not BBB weight and not joker — extra BBB or odd set
-            result.append({"type": "bbb", "weight": w, "reps": r, "set_num": set_num})
+            result.append({"type": "_supplemental", "weight": w, "reps": r, "set_num": set_num})
 
-    # Now classify pre-peak sets: last 3 ascending are working_531, rest are warmup
+    # Classify pre-peak sets: last 3 ascending are working_531, rest are warmup
     pre_peak = [r for r in result if r.get("type") == "_pre_peak"]
+    first_working_weight = None
     if len(pre_peak) >= 3:
-        # Last 3 pre-peak sets are working 531
         for i, entry in enumerate(pre_peak):
             if i >= len(pre_peak) - 3:
-                # Check if this is the very last one (AMRAP)
+                if i == len(pre_peak) - 3:
+                    first_working_weight = entry["weight"]
                 if i == len(pre_peak) - 1:
                     entry["type"] = "amrap"
                 else:
@@ -225,15 +214,28 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
             else:
                 entry["type"] = "warmup"
     elif len(pre_peak) > 0:
-        # Less than 3 pre-peak sets — all are working 531
+        first_working_weight = pre_peak[0]["weight"]
         for i, entry in enumerate(pre_peak):
             if i == len(pre_peak) - 1:
                 entry["type"] = "amrap"
             else:
                 entry["type"] = "working_531"
 
-    # Clean up temp keys
+    # Determine supplemental type: FSL vs BBB
+    # FSL = supplemental weight matches first working set (±2kg tolerance for rounding)
+    supplemental_type = "bbb"
+    if first_working_weight is not None and bbb_weight is not None:
+        if abs(bbb_weight - first_working_weight) <= 2:
+            # Weight matches first working set — check reps pattern
+            supp_sets = [r for r in result if r.get("type") == "_supplemental"]
+            avg_reps = sum(s["reps"] for s in supp_sets) / len(supp_sets) if supp_sets else 0
+            if avg_reps <= 8:
+                supplemental_type = "fsl"
+
+    # Apply final supplemental label
     for r in result:
+        if r["type"] == "_supplemental":
+            r["type"] = supplemental_type
         r.pop("idx", None)
         if r["type"] == "_pre_peak":
             r["type"] = "warmup"
@@ -412,6 +414,40 @@ def bbb_compliance(df: pd.DataFrame) -> pd.DataFrame:
     grouped["reps_ok"] = grouped["avg_reps"] >= 9  # Allow slight miss
 
     # % of TM
+    grouped["pct_of_tm"] = grouped.apply(
+        lambda r: round(r["weight_kg"] / TRAINING_MAX.get(r["lift"], 1) * 100, 1)
+        if r["lift"] and TRAINING_MAX.get(r["lift"])
+        else None,
+        axis=1,
+    )
+
+    return grouped
+
+
+def fsl_compliance(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Track FSL (First Set Last) supplemental work compliance.
+
+    FSL target: 3-5 sets of 5-8 reps at first working set weight.
+    """
+    fsl = df[df["set_type"] == "fsl"].copy()
+    if fsl.empty:
+        return pd.DataFrame()
+
+    grouped = fsl.groupby(["date", "hevy_id", "lift"]).agg(
+        weight_kg=("weight_kg", "first"),
+        n_sets=("reps", "count"),
+        total_reps=("reps", "sum"),
+        avg_reps=("reps", "mean"),
+        min_reps=("reps", "min"),
+    ).reset_index()
+
+    grouped["avg_reps"] = grouped["avg_reps"].round(1)
+    grouped["target_sets_min"] = 3
+    grouped["target_sets_max"] = 5
+    grouped["sets_ok"] = grouped["n_sets"].between(3, 5)
+    grouped["reps_ok"] = grouped["avg_reps"].between(5, 8)
+
     grouped["pct_of_tm"] = grouped.apply(
         lambda r: round(r["weight_kg"] / TRAINING_MAX.get(r["lift"], 1) * 100, 1)
         if r["lift"] and TRAINING_MAX.get(r["lift"])

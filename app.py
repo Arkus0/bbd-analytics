@@ -19,6 +19,7 @@ from src.analytics_531 import (
     strength_level_531, weekly_volume_531, muscle_volume_531,
     next_session_plan, full_week_plan,
     joker_sets_summary, validate_tm, cycle_comparison,
+    fsl_compliance,
 )
 from src.config_531 import (
     DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
@@ -434,6 +435,20 @@ if is_531:
                     f"{row['n_sets']} sets × {row['avg_reps']} reps avg (total: {row['total_reps']})"
                 )
 
+        # FSL compliance
+        fsl = fsl_compliance(df_531)
+        if not fsl.empty:
+            st.markdown("### 🔁 FSL (First Set Last)")
+            st.caption("Suplementario con el peso del primer working set — 3-5 sets × 5-8 reps.")
+            for _, row in fsl.iterrows():
+                lift_label = lift_labels.get(row["lift"], str(row["lift"]))
+                status = "✅" if row["sets_ok"] and row["reps_ok"] else "⚠️"
+                pct = f" ({row['pct_of_tm']}% TM)" if row["pct_of_tm"] else ""
+                st.markdown(
+                    f"{status} **{lift_label}** — {row['weight_kg']}kg{pct} | "
+                    f"{row['n_sets']} sets × {row['avg_reps']} reps avg"
+                )
+
         # Joker sets
         jokers = joker_sets_summary(df_531)
         if not jokers.empty:
@@ -518,19 +533,28 @@ if is_531:
                 fig.update_layout(**PL)
                 st.plotly_chart(fig, use_container_width=True)
 
-        # BBB compliance section
+        # Supplemental compliance section (BBB or FSL)
         st.divider()
-        st.markdown("### 📦 BBB Supplemental Compliance")
         bbb = bbb_compliance(df_531)
-        if bbb.empty:
-            st.info("Sin datos de BBB aún.")
-        else:
+        fsl = fsl_compliance(df_531)
+        if not bbb.empty:
+            st.markdown("### 📦 BBB Supplemental Compliance")
             bbb_display = bbb[["date", "lift", "weight_kg", "n_sets", "total_reps", "avg_reps", "pct_of_tm"]].copy()
             bbb_display["lift"] = bbb_display["lift"].map(
                 {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
             )
             bbb_display.columns = ["Fecha", "Lift", "Peso (kg)", "Sets", "Total Reps", "Avg Reps", "% TM"]
             st.dataframe(bbb_display, use_container_width=True, hide_index=True)
+        if not fsl.empty:
+            st.markdown("### 🔁 FSL Compliance")
+            fsl_display = fsl[["date", "lift", "weight_kg", "n_sets", "total_reps", "avg_reps", "pct_of_tm"]].copy()
+            fsl_display["lift"] = fsl_display["lift"].map(
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+            )
+            fsl_display.columns = ["Fecha", "Lift", "Peso (kg)", "Sets", "Total Reps", "Avg Reps", "% TM"]
+            st.dataframe(fsl_display, use_container_width=True, hide_index=True)
+        if bbb.empty and fsl.empty:
+            st.info("Sin datos de suplementario aún.")
 
     elif page == "📈 Progresión":
         st.markdown("## 📈 Progresión")
@@ -560,7 +584,8 @@ if is_531:
                 labels={"week_start": "", "total_volume": "Volumen (kg)", "set_type": "Tipo"},
                 color_discrete_map={
                     "warmup": "#64748b", "working_531": "#ef4444",
-                    "amrap": "#f59e0b", "bbb": "#3b82f6", "accessory": "#22c55e",
+                    "amrap": "#f59e0b", "bbb": "#3b82f6", "fsl": "#8b5cf6",
+                    "joker": "#ec4899", "accessory": "#22c55e",
                 },
             )
             fig.update_layout(**PL)
