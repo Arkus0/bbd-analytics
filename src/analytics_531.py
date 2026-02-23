@@ -473,7 +473,7 @@ def bbb_compliance(df: pd.DataFrame) -> pd.DataFrame:
     Shows: date, lift, weight used, sets done, avg reps, target (5x10),
     % of TM used, compliance status.
     """
-    bbb = df[df["set_type"] == "bbb"].copy()
+    bbb = df[df["set_type"].str.startswith("bbb")].copy()
     if bbb.empty:
         return pd.DataFrame()
 
@@ -483,6 +483,7 @@ def bbb_compliance(df: pd.DataFrame) -> pd.DataFrame:
         total_reps=("reps", "sum"),
         avg_reps=("reps", "mean"),
         min_reps=("reps", "min"),
+        has_amrap=("set_type", lambda x: (x == "bbb_amrap").any()),
     ).reset_index()
 
     grouped["avg_reps"] = grouped["avg_reps"].round(1)
@@ -609,7 +610,7 @@ def session_summary_531(df: pd.DataFrame) -> pd.DataFrame:
 
         lift = main["lift"].iloc[0] if not main.empty else "?"
         amrap = grp[grp["set_type"] == "amrap"]
-        bbb = grp[grp["set_type"] == "bbb"]
+        bbb = grp[grp["set_type"].str.startswith("bbb")]
 
         summaries.append({
             "date": date,
@@ -770,7 +771,7 @@ def cycle_comparison(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
 
     amraps = df[df["set_type"] == "amrap"].copy()
-    bbb = df[df["set_type"] == "bbb"].copy()
+    bbb = df[df["set_type"].str.startswith("bbb")].copy()
 
     if amraps.empty:
         return pd.DataFrame()
