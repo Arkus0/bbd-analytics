@@ -1308,3 +1308,59 @@ def training_calendar(df: pd.DataFrame, weeks_ahead: int = 16) -> list[dict]:
         })
 
     return calendar
+
+
+def build_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
+    """
+    Build annual calendar grid ready for visualization.
+
+    Returns grid data structure for both Streamlit and Notion.
+    """
+    from src.config_531 import CYCLE_WEEKS
+
+    cal = training_calendar(df, weeks_ahead=52)
+
+    # Color mapping
+    type_colors = {
+        "Semana 5s": "#3b82f6",      # Azul
+        "Semana 3s": "#f59e0b",      # Amarillo/naranja
+        "Semana 531": "#ef4444",     # Rojo
+        "Deload": "#22c55e",         # Verde
+    }
+
+    weeks_data = []
+    for w in cal:
+        # Determine border color based on status
+        if w["status"] == "completed":
+            border = "#166534"  # Verde oscuro
+        elif w["status"] == "current":
+            border = "#2563eb"  # Azul
+        elif w["status"] == "partial":
+            border = "#ea580c"  # Naranja
+        else:
+            border = "#9ca3af"  # Gris
+
+        weeks_data.append({
+            "abs_week": w["abs_week"],
+            "macro_num": w["macro_num"],
+            "week_in_macro": w["week_in_macro"],
+            "week_name": w["week_name"],
+            "week_type": w["week_type"],
+            "type": w["week_name"].replace("Semana ", "").lower(),  # "5s", "3s", "531", "deload"
+            "status": w["status"],
+            "is_deload": w["is_deload"],
+            "is_bump_week": w["is_bump_week"],
+            "tms": w["tms"],
+            "sessions_done": w["sessions_done"],
+            "color": type_colors.get(w["week_name"], "#6b7280"),
+            "border_color": border,
+        })
+
+    current_week = next((w["abs_week"] for w in weeks_data if w["status"] == "current"), 1)
+
+    return {
+        "year": year,
+        "weeks": weeks_data,
+        "current_week": current_week,
+        "total_macros": max(w["macro_num"] for w in weeks_data),
+    }
