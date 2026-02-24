@@ -135,7 +135,7 @@ def _youtube_embed_url(url: str) -> str | None:
 
 
 def render_monthly_calendar(cal_data: dict):
-    """Render annual calendar like Google Calendar with days and colored circles."""
+    """Render compact annual calendar with colored circles for each day."""
     from calendar import monthrange
     from datetime import date
     
@@ -153,121 +153,66 @@ def render_monthly_calendar(cal_data: dict):
         "deload": "#22c55e",
     }
     
-    # Month names
-    month_names = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-                   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    # Month abbreviations
+    month_names = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
+                   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
     
-    # Program start date (approximate)
+    # Program start date
     program_start = date(year, 1, 1)
     
-    for month_idx in range(12):
-        month_name = month_names[month_idx]
-        
-        # Get days in month
-        _, days_in_month = monthrange(year, month_idx + 1)
-        
-        # Calculate which week each day belongs to
-        # Approximate: each week is 7 days, program starts week 1 on Jan 1
-        days_data = []
-        for day in range(1, days_in_month + 1):
-            # Calculate absolute week number
-            current_date = date(year, month_idx + 1, day)
-            days_since_start = (current_date - program_start).days
-            abs_week = (days_since_start // 7) + 1
-            
-            if abs_week in week_data:
-                w = week_data[abs_week]
-                days_data.append({
-                    "day": day,
-                    "week": abs_week,
-                    "type": w["type"],
-                    "color": color_map.get(w["type"], "#6b7280"),
-                    "status": w["status"],
-                    "tms": w["tms"],
-                    "week_name": w["week_name"],
-                })
-            else:
-                days_data.append({
-                    "day": day,
-                    "week": None,
-                    "type": None,
-                    "color": "#e5e7eb",
-                    "status": None,
-                    "tms": None,
-                    "week_name": None,
-                })
-        
-        # Render month
-        st.markdown(f"### {month_name} {year}")
-        
-        # Days of week header
-        cols = st.columns(7)
-        days_of_week = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-        for i, day_name in enumerate(days_of_week):
-            with cols[i]:
-                st.markdown(f"**{day_name}**")
-        
-        # Calculate starting day of week for this month
-        first_weekday = monthrange(year, month_idx + 1)[0]  # 0=Monday
-        
-        # Render days in grid
-        # Start from the first Monday of the week containing day 1
-        current_day = 1 - first_weekday  # May be negative (previous month)
-        
-        while current_day <= days_in_month:
-            cols = st.columns(7)
-            for i in range(7):
-                with cols[i]:
-                    if 1 <= current_day <= days_in_month:
-                        day_info = days_data[current_day - 1]
-                        
-                        # Status indicator
-                        status_icon = ""
-                        if day_info["status"] == "current":
-                            status_icon = "👉"
-                        elif day_info["status"] == "completed":
-                            status_icon = "✅"
-                        
-                        # Day number
-                        st.markdown(f"**{current_day}**")
-                        
-                        # Colored circle for week type
-                        if day_info["week"]:
-                            circle_html = f"""
-                            <div style="
-                                width: 20px; 
-                                height: 20px; 
-                                border-radius: 50%; 
-                                background-color: {day_info['color']};
-                                margin: 0 auto;
-                                border: 2px solid {'#2563eb' if day_info['status'] == 'current' else 'white'};
-                            "></div>
-                            """
-                            st.markdown(circle_html, unsafe_allow_html=True)
-                            
-                            # Week number tooltip (as caption)
-                            st.caption(f"W{day_info['week']}{status_icon}")
-                        else:
-                            st.markdown("·")
-                    else:
-                        st.markdown("")
-                
-                current_day += 1
-            
-            if current_day > days_in_month:
+    # Create 2 rows x 6 columns for months
+    for row in range(2):
+        cols = st.columns(6)
+        for col_idx in range(6):
+            month_idx = row * 6 + col_idx
+            if month_idx >= 12:
                 break
+                
+            with cols[col_idx]:
+                month_name = month_names[month_idx]
+                _, days_in_month = monthrange(year, month_idx + 1)
+                
+                st.markdown(f"**{month_name}**")
+                
+                # Build day circles
+                day_circles = []
+                for day in range(1, days_in_month + 1):
+                    current_date = date(year, month_idx + 1, day)
+                    days_since_start = (current_date - program_start).days
+                    abs_week = (days_since_start // 7) + 1
+                    
+                    if abs_week in week_data:
+                        w = week_data[abs_week]
+                        color = color_map.get(w["type"], "#6b7280")
+                        border = "2px solid #2563eb" if w["status"] == "current" else "none"
+                        title = f"W{abs_week} - {w['week_name']}"
+                    else:
+                        color = "#e5e7eb"
+                        border = "none"
+                        title = f"W{abs_week}"
+                    
+                    day_circles.append(
+                        f'<span title="{title}" style="display:inline-block;width:14px;height:14px;'
+                        f'border-radius:50%;background-color:{color};border:{border};'
+                        f'margin:1px;font-size:8px;text-align:center;line-height:14px;'
+                        f'color:white;text-shadow:0 0 2px black;">{day}</span>'
+                    )
+                
+                # Display all days in wrapped lines
+                html_days = " ".join(day_circles)
+                st.markdown(f'<div style="line-height:16px;">{html_days}</div>', unsafe_allow_html=True)
         
-        st.markdown("---")
+        st.markdown("")
     
     # Legend
-    st.markdown("### Leyenda")
+    st.markdown("---")
     cols = st.columns(6)
-    with cols[0]: st.markdown("🟦 **5s week**")
-    with cols[1]: st.markdown("🟨 **3s week**")
-    with cols[2]: st.markdown("🟥 **531 week**")
+    with cols[0]: st.markdown("🟦 **5s**")
+    with cols[1]: st.markdown("🟨 **3s**")
+    with cols[2]: st.markdown("🟥 **531**")
     with cols[3]: st.markdown("🟩 **Deload**")
-    with cols[4]: st.markdown("👉 **Actual**")
-    with cols[5]: st.markdown("✅ **Completada**")
+    with cols[4]: st.markdown("🔵 **Actual**")
+    with cols[5]: st.markdown("✅ **Hecha**")
 
 
 st.markdown("""
