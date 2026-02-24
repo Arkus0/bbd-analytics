@@ -42,7 +42,7 @@ HEADERS = {
 }
 RATE_LIMIT_DELAY = 0.35
 
-LIFT_LABELS = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+LIFT_LABELS = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
 
 
 # ─── Low-level Notion API ────────────────────────────────────────────

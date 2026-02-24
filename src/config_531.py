@@ -121,9 +121,9 @@ DAY_CONFIG_531 = {
         "color": "#3b82f6",
     },
     4: {
-        "name": "BBB Día 4 - Squat",
+        "name": "BBB Día 4 - Zercher",
         "main_lift": "squat",
-        "focus": "Sentadilla",
+        "focus": "Sentadilla Zercher",
         "color": "#22c55e",
     },
 }
@@ -134,7 +134,7 @@ MAIN_LIFT_TIDS = {
     "ohp":      "073032BB",   # Press Militar de Pie (Barra)
     "deadlift": "C6272009",   # Peso Muerto (Barra)
     "bench":    "E644F828",   # Press de Banca - Agarre Abierto (Barra)
-    "squat":    "D04AC939",   # Squat (Barbell) — Back Squat
+    "squat":    "40C6A9FC",   # Zercher Squat (replaces Back Squat D04AC939)
 }
 
 # Reverse lookup: template_id → lift name
@@ -162,9 +162,15 @@ EXERCISE_DB_531 = {
         "lift": "bench",
         "muscle_group": "Pecho",
     },
+    "40C6A9FC": {
+        "name": "Zercher Squat",
+        "role": "main",
+        "lift": "squat",
+        "muscle_group": "Piernas",
+    },
     "D04AC939": {
         "name": "Squat (Barbell)",
-        "role": "main",
+        "role": "historical",  # Replaced by Zercher Squat
         "lift": "squat",
         "muscle_group": "Piernas",
     },
@@ -267,7 +273,7 @@ STRENGTH_STANDARDS_531 = {
     "ohp":      {"beginner": 0.35, "intermediate": 0.65, "advanced": 1.00, "elite": 1.25},
     "deadlift": {"beginner": 1.00, "intermediate": 1.50, "advanced": 2.00, "elite": 2.50},
     "bench":    {"beginner": 0.50, "intermediate": 1.00, "advanced": 1.50, "elite": 2.00},
-    "squat":    {"beginner": 0.75, "intermediate": 1.25, "advanced": 1.75, "elite": 2.25},
+    "squat":    {"beginner": 0.50, "intermediate": 0.85, "advanced": 1.25, "elite": 1.60},  # Zercher Squat
 }
 
 
