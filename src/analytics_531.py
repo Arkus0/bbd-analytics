@@ -1350,6 +1350,7 @@ def build_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
             "status": w["status"],
             "is_deload": w["is_deload"],
             "is_bump_week": w["is_bump_week"],
+            "tm_bumps": w["tm_bumps"],
             "tms": w["tms"],
             "sessions_done": w["sessions_done"],
             "color": type_colors.get(w["week_name"], "#6b7280"),

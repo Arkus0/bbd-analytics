@@ -135,95 +135,132 @@ def _youtube_embed_url(url: str) -> str | None:
 
 
 def render_monthly_calendar(cal_data: dict):
-    """Render annual calendar with monthly grid using Plotly."""
+    """Render annual calendar like Google Calendar with days and colored circles."""
+    from calendar import monthrange
+    from datetime import date
+    
     weeks = cal_data["weeks"]
+    year = cal_data.get("year", 2026)
     
-    month_names = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", 
-                   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    # Map weeks to their data
+    week_data = {w["abs_week"]: w for w in weeks}
     
+    # Color mapping
     color_map = {
         "5s": "#3b82f6",
-        "3s": "#f59e0b",
+        "3s": "#f59e0b", 
         "531": "#ef4444",
         "deload": "#22c55e",
     }
     
-    from plotly.subplots import make_subplots
+    # Month names
+    month_names = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     
-    fig = make_subplots(
-        rows=2, cols=6,
-        subplot_titles=month_names,
-        horizontal_spacing=0.05,
-        vertical_spacing=0.1,
-    )
+    # Program start date (approximate)
+    program_start = date(year, 1, 1)
     
-    for month_idx, month_name in enumerate(month_names):
-        row = (month_idx // 6) + 1
-        col = (month_idx % 6) + 1
+    for month_idx in range(12):
+        month_name = month_names[month_idx]
         
-        start_week = month_idx * 4 + 1
-        end_week = min(start_week + 4, 53)
-        month_weeks = [w for w in weeks if start_week <= w["abs_week"] < end_week]
+        # Get days in month
+        _, days_in_month = monthrange(year, month_idx + 1)
         
-        x_pos = []
-        y_pos = []
-        colors = []
-        texts = []
-        hover_texts = []
-        
-        for i, w in enumerate(month_weeks):
-            x = i % 2
-            y = i // 2
+        # Calculate which week each day belongs to
+        # Approximate: each week is 7 days, program starts week 1 on Jan 1
+        days_data = []
+        for day in range(1, days_in_month + 1):
+            # Calculate absolute week number
+            current_date = date(year, month_idx + 1, day)
+            days_since_start = (current_date - program_start).days
+            abs_week = (days_since_start // 7) + 1
             
-            x_pos.append(x)
-            y_pos.append(y)
-            colors.append(color_map.get(w["type"], "#6b7280"))
-            
-            status_icon = "👉" if w["status"] == "current" else "✅" if w["status"] == "completed" else ""
-            texts.append(f"W{w['abs_week']}{status_icon}")
-            
-            tms = w["tms"]
-            hover_texts.append(
-                f"Semana {w['abs_week']} — {w['week_name']}<br>"
-                f"Macro {w['macro_num']}·W{w['week_in_macro']}<br>"
-                f"OHP: {tms['ohp']:.0f}kg | DL: {tms['deadlift']:.0f}kg<br>"
-                f"B: {tms['bench']:.0f}kg | S: {tms['squat']:.0f}kg<br>"
-                f"Estado: {w['status']}"
-            )
+            if abs_week in week_data:
+                w = week_data[abs_week]
+                days_data.append({
+                    "day": day,
+                    "week": abs_week,
+                    "type": w["type"],
+                    "color": color_map.get(w["type"], "#6b7280"),
+                    "status": w["status"],
+                    "tms": w["tms"],
+                    "week_name": w["week_name"],
+                })
+            else:
+                days_data.append({
+                    "day": day,
+                    "week": None,
+                    "type": None,
+                    "color": "#e5e7eb",
+                    "status": None,
+                    "tms": None,
+                    "week_name": None,
+                })
         
-        fig.add_trace(
-            go.Scatter(
-                x=x_pos, y=y_pos,
-                mode="markers+text",
-                marker=dict(
-                    size=40,
-                    color=colors,
-                    line=dict(width=2, color="white"),
-                ),
-                text=texts,
-                textposition="middle center",
-                textfont=dict(size=10, color="white"),
-                hovertext=hover_texts,
-                hoverinfo="text",
-                showlegend=False,
-            ),
-            row=row, col=col,
-        )
+        # Render month
+        st.markdown(f"### {month_name} {year}")
         
-        fig.update_xaxes(range=[-0.5, 1.5], showgrid=False, showticklabels=False, row=row, col=col)
-        fig.update_yaxes(range=[-0.5, 1.5], showgrid=False, showticklabels=False, row=row, col=col)
+        # Days of week header
+        cols = st.columns(7)
+        days_of_week = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+        for i, day_name in enumerate(days_of_week):
+            with cols[i]:
+                st.markdown(f"**{day_name}**")
+        
+        # Calculate starting day of week for this month
+        first_weekday = monthrange(year, month_idx + 1)[0]  # 0=Monday
+        
+        # Render days in grid
+        # Start from the first Monday of the week containing day 1
+        current_day = 1 - first_weekday  # May be negative (previous month)
+        
+        while current_day <= days_in_month:
+            cols = st.columns(7)
+            for i in range(7):
+                with cols[i]:
+                    if 1 <= current_day <= days_in_month:
+                        day_info = days_data[current_day - 1]
+                        
+                        # Status indicator
+                        status_icon = ""
+                        if day_info["status"] == "current":
+                            status_icon = "👉"
+                        elif day_info["status"] == "completed":
+                            status_icon = "✅"
+                        
+                        # Day number
+                        st.markdown(f"**{current_day}**")
+                        
+                        # Colored circle for week type
+                        if day_info["week"]:
+                            circle_html = f"""
+                            <div style="
+                                width: 20px; 
+                                height: 20px; 
+                                border-radius: 50%; 
+                                background-color: {day_info['color']};
+                                margin: 0 auto;
+                                border: 2px solid {'#2563eb' if day_info['status'] == 'current' else 'white'};
+                            "></div>
+                            """
+                            st.markdown(circle_html, unsafe_allow_html=True)
+                            
+                            # Week number tooltip (as caption)
+                            st.caption(f"W{day_info['week']}{status_icon}")
+                        else:
+                            st.markdown("·")
+                    else:
+                        st.markdown("")
+                
+                current_day += 1
+            
+            if current_day > days_in_month:
+                break
+        
+        st.markdown("---")
     
-    fig.update_layout(
-        title="Calendario Anual 5/3/1",
-        height=500,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        margin=dict(t=60, b=40, l=40, r=40),
-    )
-    
-    st.plotly_chart(fig, use_container_width=True)
-    
-    st.markdown("---")
+    # Legend
+    st.markdown("### Leyenda")
     cols = st.columns(6)
     with cols[0]: st.markdown("🟦 **5s week**")
     with cols[1]: st.markdown("🟨 **3s week**")
