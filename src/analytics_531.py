@@ -950,7 +950,7 @@ def next_session_plan(df: pd.DataFrame) -> dict:
         "day_name": day_cfg.get("name", f"Día {next_day}"),
         "focus": day_cfg.get("focus", ""),
         "lift": lift,
-        "lift_label": {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift),
+        "lift_label": {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}.get(lift, lift),
         "macro_num": macro_num,
         "week_in_macro": pos["week_in_macro"],
         "mini_cycle": pos["mini_cycle"],
@@ -1035,7 +1035,7 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
         day_cfg = DAY_CONFIG_531.get(day_num, {})
         lift = day_cfg.get("main_lift", "?")
         tm = get_effective_tm(lift, tm_bumps)
-        label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift)
+        label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}.get(lift, lift)
 
         day_plan = {
             "day_num": day_num,
@@ -1387,7 +1387,7 @@ def get_kanban_data(df: pd.DataFrame) -> dict:
         return {"todo": [], "done": [], "upcoming": []}
     
     lifts = ["ohp", "deadlift", "bench", "squat"]
-    lift_names = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+    lift_names = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
     
     total_sessions = df["hevy_id"].nunique()
     current_pos = get_cycle_position(total_sessions)

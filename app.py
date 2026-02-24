@@ -551,7 +551,7 @@ if is_531:
         # Training Maxes
         st.markdown("### 🎯 Training Maxes")
         tm_cols = st.columns(4)
-        lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+        lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
         lift_emojis = {"ohp": "🏋️", "deadlift": "💀", "bench": "🪑", "squat": "🦵"}
         for i, (lift, label) in enumerate(lift_labels.items()):
             tm = TRAINING_MAX.get(lift)
@@ -639,7 +639,7 @@ if is_531:
         tm_val = validate_tm(df_531)
         if tm_val:
             for lift, info in tm_val.items():
-                lift_label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(lift, lift)
+                lift_label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}.get(lift, lift)
                 if info["status"] == "too_light":
                     st.warning(
                         f"⚠️ **{lift_label}**: TM parece bajo — promedio +{info['avg_reps_over_min']} reps sobre mínimo. "
@@ -666,7 +666,7 @@ if is_531:
             # AMRAP table
             display = amraps.copy()
             display["lift"] = display["lift"].map(
-                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
             )
             display.columns = ["Fecha", "Lift", "Peso (kg)", "Reps", "e1RM",
                                "Mín Reps", "+Sobre Mín", "% TM"]
@@ -678,7 +678,7 @@ if is_531:
             if not prog.empty:
                 prog_display = prog.copy()
                 prog_display["lift"] = prog_display["lift"].map(
-                    {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                    {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
                 )
                 fig = px.line(
                     prog_display, x="date", y="e1rm", color="lift",
@@ -696,7 +696,7 @@ if is_531:
             st.markdown("### 📦 BBB Supplemental Compliance")
             bbb_display = bbb[["date", "lift", "weight_kg", "n_sets", "total_reps", "avg_reps", "pct_of_tm"]].copy()
             bbb_display["lift"] = bbb_display["lift"].map(
-                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
             )
             bbb_display.columns = ["Fecha", "Lift", "Peso (kg)", "Sets", "Total Reps", "Avg Reps", "% TM"]
             st.dataframe(bbb_display, use_container_width=True, hide_index=True)
@@ -704,7 +704,7 @@ if is_531:
             st.markdown("### 🔁 FSL Compliance")
             fsl_display = fsl[["date", "lift", "weight_kg", "n_sets", "total_reps", "avg_reps", "pct_of_tm"]].copy()
             fsl_display["lift"] = fsl_display["lift"].map(
-                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
             )
             fsl_display.columns = ["Fecha", "Lift", "Peso (kg)", "Sets", "Total Reps", "Avg Reps", "% TM"]
             st.dataframe(fsl_display, use_container_width=True, hide_index=True)
@@ -720,7 +720,7 @@ if is_531:
         if not tm_prog.empty:
             tm_display = tm_prog.copy()
             tm_display["lift"] = tm_display["lift"].map(
-                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
             )
             tm_display = tm_display[["lift", "date", "amrap_weight", "amrap_reps", "e1rm", "estimated_tm", "current_tm"]]
             tm_display.columns = ["Lift", "Fecha", "AMRAP Peso", "AMRAP Reps", "e1RM", "TM Estimado", "TM Actual"]
@@ -754,7 +754,7 @@ if is_531:
             # Table
             cyc_display = cyc.copy()
             cyc_display["lift"] = cyc_display["lift"].map(
-                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
             )
             cols_show = ["cycle_num", "lift", "amrap_avg_reps", "amrap_best_e1rm", "bbb_total_volume"]
             col_names = ["Ciclo", "Lift", "AMRAP Reps (avg)", "Mejor e1RM", "BBB Volumen"]
@@ -769,7 +769,7 @@ if is_531:
             if cyc["cycle_num"].nunique() >= 2:
                 cyc_chart = cyc.copy()
                 cyc_chart["lift"] = cyc_chart["lift"].map(
-                    {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+                    {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
                 )
                 cyc_chart["cycle_label"] = "Ciclo " + cyc_chart["cycle_num"].astype(str)
                 fig = px.bar(
@@ -798,7 +798,7 @@ if is_531:
         st.markdown("## 🏋️ Strength Standards (531)")
 
         levels = strength_level_531(df_531)
-        lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+        lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
 
         for lift, label in lift_labels.items():
             info = levels.get(lift, {})
@@ -840,7 +840,7 @@ if is_531:
             st.info("Sin sesiones registradas.")
         else:
             for _, s in sessions.iterrows():
-                lift_label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}.get(s["main_lift"], s["main_lift"])
+                lift_label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}.get(s["main_lift"], s["main_lift"])
                 with st.expander(f"📅 {s['date'].strftime('%d %b')} — {lift_label} | {s['total_volume']:,}kg"):
                     c1, c2, c3 = st.columns(3)
                     c1.metric("AMRAP", f"{s['amrap_weight']}kg × {s['amrap_reps']}")
@@ -926,7 +926,7 @@ if is_531:
             # ── Full timeline ──
             st.markdown("### 🗓️ Timeline completa")
 
-            lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Squat"}
+            lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
 
             for w in cal:
                 status = w["status"]
