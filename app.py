@@ -135,8 +135,8 @@ def _youtube_embed_url(url: str) -> str | None:
 
 
 def render_monthly_calendar(cal_data: dict):
-    """Render compact annual calendar with colored circles for each day."""
-    from calendar import monthrange
+    """Render Google Calendar style monthly view."""
+    from calendar import monthrange, monthcalendar
     from datetime import date
     
     weeks = cal_data["weeks"]
@@ -153,66 +153,136 @@ def render_monthly_calendar(cal_data: dict):
         "deload": "#22c55e",
     }
     
-    # Month abbreviations
-    month_names = ["Ene", "Feb", "Mar", "Abr", "May", "Jun",
-                   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    # Month names
+    month_names = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     
-    # Program start date
+    # Days of week
+    days_header = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
+    
+    # Program start
     program_start = date(year, 1, 1)
     
-    # Create 2 rows x 6 columns for months
-    for row in range(2):
-        cols = st.columns(6)
-        for col_idx in range(6):
-            month_idx = row * 6 + col_idx
-            if month_idx >= 12:
-                break
-                
-            with cols[col_idx]:
-                month_name = month_names[month_idx]
-                _, days_in_month = monthrange(year, month_idx + 1)
-                
-                st.markdown(f"**{month_name}**")
-                
-                # Build day circles
-                day_circles = []
-                for day in range(1, days_in_month + 1):
-                    current_date = date(year, month_idx + 1, day)
-                    days_since_start = (current_date - program_start).days
-                    abs_week = (days_since_start // 7) + 1
-                    
-                    if abs_week in week_data:
-                        w = week_data[abs_week]
-                        color = color_map.get(w["type"], "#6b7280")
-                        border = "2px solid #2563eb" if w["status"] == "current" else "none"
-                        title = f"W{abs_week} - {w['week_name']}"
-                    else:
-                        color = "#e5e7eb"
-                        border = "none"
-                        title = f"W{abs_week}"
-                    
-                    day_circles.append(
-                        f'<span title="{title}" style="display:inline-block;width:14px;height:14px;'
-                        f'border-radius:50%;background-color:{color};border:{border};'
-                        f'margin:1px;font-size:8px;text-align:center;line-height:14px;'
-                        f'color:white;text-shadow:0 0 2px black;">{day}</span>'
-                    )
-                
-                # Display all days in wrapped lines
-                html_days = " ".join(day_circles)
-                st.markdown(f'<div style="line-height:16px;">{html_days}</div>', unsafe_allow_html=True)
+    for month_idx in range(12):
+        month_name = month_names[month_idx]
         
-        st.markdown("")
+        # Get calendar matrix for this month
+        cal_matrix = monthcalendar(year, month_idx + 1)  # List of weeks, each week is [0,1,2,3,4,5,6] or [0,0,1,2,3,4,5]
+        
+        st.markdown(f"### {month_name} {year}")
+        
+        # Header row with days of week
+        header_cols = st.columns(7)
+        for i, day_name in enumerate(days_header):
+            with header_cols[i]:
+                st.markdown(f"**{day_name}**")
+        
+        # Each week row
+        for week in cal_matrix:
+            week_cols = st.columns(7)
+            for day_idx, day in enumerate(week):
+                with week_cols[day_idx]:
+                    if day == 0:
+                        # Empty cell (previous/next month)
+                        st.markdown("")
+                    else:
+                        # Calculate week number
+                        current_date = date(year, month_idx + 1, day)
+                        days_since_start = (current_date - program_start).days
+                        abs_week = (days_since_start // 7) + 1
+                        
+                        if abs_week in week_data:
+                            w = week_data[abs_week]
+                            color = color_map.get(w["type"], "#6b7280")
+                            is_current = w["status"] == "current"
+                            border_color = "#2563eb" if is_current else color
+                            border_width = "3px" if is_current else "2px"
+                            
+                            # Day number with colored circle background
+                            st.markdown(
+                                f"""
+                                <div style="
+                                    width: 32px;
+                                    height: 32px;
+                                    border-radius: 50%;
+                                    background-color: {color};
+                                    border: {border_width} solid {border_color};
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    margin: 0 auto;
+                                    font-size: 12px;
+                                    font-weight: bold;
+                                    color: white;
+                                    text-shadow: 0 0 2px black;
+                                ">{day}</div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                            
+                            # Week number below
+                            st.caption(f"W{abs_week}")
+                        else:
+                            # Day without program data
+                            st.markdown(
+                                f"""
+                                <div style="
+                                    width: 32px;
+                                    height: 32px;
+                                    border-radius: 50%;
+                                    background-color: #e5e7eb;
+                                    border: 2px solid #d1d5db;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    margin: 0 auto;
+                                    font-size: 12px;
+                                    color: #6b7280;
+                                ">{day}</div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+        
+        st.markdown("---")
     
     # Legend
-    st.markdown("---")
+    st.markdown("### Leyenda")
     cols = st.columns(6)
-    with cols[0]: st.markdown("🟦 **5s**")
-    with cols[1]: st.markdown("🟨 **3s**")
-    with cols[2]: st.markdown("🟥 **531**")
-    with cols[3]: st.markdown("🟩 **Deload**")
-    with cols[4]: st.markdown("🔵 **Actual**")
-    with cols[5]: st.markdown("✅ **Hecha**")
+    with cols[0]: 
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:16px;height:16px;border-radius:50%;background:#3b82f6;"></div>
+            <span>5s</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with cols[1]: 
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:16px;height:16px;border-radius:50%;background:#f59e0b;"></div>
+            <span>3s</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with cols[2]: 
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:16px;height:16px;border-radius:50%;background:#ef4444;"></div>
+            <span>531</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with cols[3]: 
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:16px;height:16px;border-radius:50%;background:#22c55e;"></div>
+            <span>Deload</span>
+        </div>
+        """, unsafe_allow_html=True)
+    with cols[4]: 
+        st.markdown("""
+        <div style="display:flex;align-items:center;gap:5px;">
+            <div style="width:16px;height:16px;border-radius:50%;background:#6b7280;border:3px solid #2563eb;"></div>
+            <span>Actual</span>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 st.markdown("""
