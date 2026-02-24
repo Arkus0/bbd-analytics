@@ -135,7 +135,7 @@ def _youtube_embed_url(url: str) -> str | None:
 
 
 def render_monthly_calendar(cal_data: dict):
-    """Render Google Calendar style monthly view."""
+    """Render Google Calendar style monthly view with mobile support."""
     from calendar import monthrange, monthcalendar
     from datetime import date
     
@@ -163,11 +163,23 @@ def render_monthly_calendar(cal_data: dict):
     # Program start
     program_start = date(year, 1, 1)
     
-    for month_idx in range(12):
+    # Detect mobile using streamlit's query params or session state
+    # Simple detection: check screen width via JavaScript or use a toggle
+    is_mobile = st.toggle("📱 Modo móvil (mostrar 1 mes)", value=False, key="mobile_mode")
+    
+    if is_mobile:
+        # Mobile: show month selector
+        month_idx = st.selectbox("Mes", range(12), format_func=lambda x: month_names[x], key="month_selector")
+        months_to_show = [month_idx]
+    else:
+        # Desktop: show all months
+        months_to_show = range(12)
+    
+    for month_idx in months_to_show:
         month_name = month_names[month_idx]
         
         # Get calendar matrix for this month
-        cal_matrix = monthcalendar(year, month_idx + 1)  # List of weeks, each week is [0,1,2,3,4,5,6] or [0,0,1,2,3,4,5]
+        cal_matrix = monthcalendar(year, month_idx + 1)
         
         st.markdown(f"### {month_name} {year}")
         
@@ -183,10 +195,8 @@ def render_monthly_calendar(cal_data: dict):
             for day_idx, day in enumerate(week):
                 with week_cols[day_idx]:
                     if day == 0:
-                        # Empty cell (previous/next month)
                         st.markdown("")
                     else:
-                        # Calculate week number
                         current_date = date(year, month_idx + 1, day)
                         days_since_start = (current_date - program_start).days
                         abs_week = (days_since_start // 7) + 1
@@ -198,7 +208,6 @@ def render_monthly_calendar(cal_data: dict):
                             border_color = "#2563eb" if is_current else color
                             border_width = "3px" if is_current else "2px"
                             
-                            # Day number with colored circle background
                             st.markdown(
                                 f"""
                                 <div style="
@@ -219,11 +228,8 @@ def render_monthly_calendar(cal_data: dict):
                                 """,
                                 unsafe_allow_html=True
                             )
-                            
-                            # Week number below
                             st.caption(f"W{abs_week}")
                         else:
-                            # Day without program data
                             st.markdown(
                                 f"""
                                 <div style="
