@@ -133,6 +133,106 @@ def _youtube_embed_url(url: str) -> str | None:
             return f"https://www.youtube.com/embed/{match.group(1)}"
     return None
 
+
+def render_monthly_calendar(cal_data: dict):
+    """Render annual calendar with monthly grid using Plotly."""
+    weeks = cal_data["weeks"]
+    
+    month_names = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", 
+                   "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
+    
+    color_map = {
+        "5s": "#3b82f6",
+        "3s": "#f59e0b",
+        "531": "#ef4444",
+        "deload": "#22c55e",
+    }
+    
+    from plotly.subplots import make_subplots
+    
+    fig = make_subplots(
+        rows=2, cols=6,
+        subplot_titles=month_names,
+        horizontal_spacing=0.05,
+        vertical_spacing=0.1,
+    )
+    
+    for month_idx, month_name in enumerate(month_names):
+        row = (month_idx // 6) + 1
+        col = (month_idx % 6) + 1
+        
+        start_week = month_idx * 4 + 1
+        end_week = min(start_week + 4, 53)
+        month_weeks = [w for w in weeks if start_week <= w["abs_week"] < end_week]
+        
+        x_pos = []
+        y_pos = []
+        colors = []
+        texts = []
+        hover_texts = []
+        
+        for i, w in enumerate(month_weeks):
+            x = i % 2
+            y = i // 2
+            
+            x_pos.append(x)
+            y_pos.append(y)
+            colors.append(color_map.get(w["type"], "#6b7280"))
+            
+            status_icon = "👉" if w["status"] == "current" else "✅" if w["status"] == "completed" else ""
+            texts.append(f"W{w['abs_week']}{status_icon}")
+            
+            tms = w["tms"]
+            hover_texts.append(
+                f"Semana {w['abs_week']} — {w['week_name']}<br>"
+                f"Macro {w['macro_num']}·W{w['week_in_macro']}<br>"
+                f"OHP: {tms['ohp']:.0f}kg | DL: {tms['deadlift']:.0f}kg<br>"
+                f"B: {tms['bench']:.0f}kg | S: {tms['squat']:.0f}kg<br>"
+                f"Estado: {w['status']}"
+            )
+        
+        fig.add_trace(
+            go.Scatter(
+                x=x_pos, y=y_pos,
+                mode="markers+text",
+                marker=dict(
+                    size=40,
+                    color=colors,
+                    line=dict(width=2, color="white"),
+                ),
+                text=texts,
+                textposition="middle center",
+                textfont=dict(size=10, color="white"),
+                hovertext=hover_texts,
+                hoverinfo="text",
+                showlegend=False,
+            ),
+            row=row, col=col,
+        )
+        
+        fig.update_xaxes(range=[-0.5, 1.5], showgrid=False, showticklabels=False, row=row, col=col)
+        fig.update_yaxes(range=[-0.5, 1.5], showgrid=False, showticklabels=False, row=row, col=col)
+    
+    fig.update_layout(
+        title="Calendario Anual 5/3/1",
+        height=500,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(t=60, b=40, l=40, r=40),
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
+    cols = st.columns(6)
+    with cols[0]: st.markdown("🟦 **5s week**")
+    with cols[1]: st.markdown("🟨 **3s week**")
+    with cols[2]: st.markdown("🟥 **531 week**")
+    with cols[3]: st.markdown("🟩 **Deload**")
+    with cols[4]: st.markdown("👉 **Actual**")
+    with cols[5]: st.markdown("✅ **Completada**")
+
+
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
@@ -866,107 +966,6 @@ if is_531:
                     })
             if bump_points:
                 st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
-
-    # ══════════════════════════════════════════════════════════════════════
-    # Función para calendario anual mensual
-    # ══════════════════════════════════════════════════════════════════════
-    def render_monthly_calendar(cal_data: dict):
-        """Render annual calendar with monthly grid using Plotly."""
-        weeks = cal_data["weeks"]
-        
-        month_names = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", 
-                       "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
-        
-        color_map = {
-            "5s": "#3b82f6",
-            "3s": "#f59e0b",
-            "531": "#ef4444",
-            "deload": "#22c55e",
-        }
-        
-        from plotly.subplots import make_subplots
-        
-        fig = make_subplots(
-            rows=2, cols=6,
-            subplot_titles=month_names,
-            horizontal_spacing=0.05,
-            vertical_spacing=0.1,
-        )
-        
-        for month_idx, month_name in enumerate(month_names):
-            row = (month_idx // 6) + 1
-            col = (month_idx % 6) + 1
-            
-            start_week = month_idx * 4 + 1
-            end_week = min(start_week + 4, 53)
-            month_weeks = [w for w in weeks if start_week <= w["abs_week"] < end_week]
-            
-            x_pos = []
-            y_pos = []
-            colors = []
-            texts = []
-            hover_texts = []
-            
-            for i, w in enumerate(month_weeks):
-                x = i % 2
-                y = i // 2
-                
-                x_pos.append(x)
-                y_pos.append(y)
-                colors.append(color_map.get(w["type"], "#6b7280"))
-                
-                status_icon = "👉" if w["status"] == "current" else "✅" if w["status"] == "completed" else ""
-                texts.append(f"W{w['abs_week']}{status_icon}")
-                
-                tms = w["tms"]
-                hover_texts.append(
-                    f"Semana {w['abs_week']} — {w['week_name']}<br>"
-                    f"Macro {w['macro_num']}·W{w['week_in_macro']}<br>"
-                    f"OHP: {tms['ohp']:.0f}kg | DL: {tms['deadlift']:.0f}kg<br>"
-                    f"B: {tms['bench']:.0f}kg | S: {tms['squat']:.0f}kg<br>"
-                    f"Estado: {w['status']}"
-                )
-            
-            fig.add_trace(
-                go.Scatter(
-                    x=x_pos, y=y_pos,
-                    mode="markers+text",
-                    marker=dict(
-                        size=40,
-                        color=colors,
-                        line=dict(width=2, color="white"),
-                    ),
-                    text=texts,
-                    textposition="middle center",
-                    textfont=dict(size=10, color="white"),
-                    hovertext=hover_texts,
-                    hoverinfo="text",
-                    showlegend=False,
-                ),
-                row=row, col=col,
-            )
-            
-            fig.update_xaxes(range=[-0.5, 1.5], showgrid=False, showticklabels=False, row=row, col=col)
-            fig.update_yaxes(range=[-0.5, 1.5], showgrid=False, showticklabels=False, row=row, col=col)
-        
-        fig.update_layout(
-            title="Calendario Anual 5/3/1",
-            height=500,
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="rgba(0,0,0,0)",
-            margin=dict(t=60, b=40, l=40, r=40),
-        )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-        st.markdown("---")
-        cols = st.columns(6)
-        with cols[0]: st.markdown("🟦 **5s week**")
-        with cols[1]: st.markdown("🟨 **3s week**")
-        with cols[2]: st.markdown("🟥 **531 week**")
-        with cols[3]: st.markdown("🟩 **Deload**")
-        with cols[4]: st.markdown("👉 **Actual**")
-        with cols[5]: st.markdown("✅ **Completada**")
 
     st.stop()  # Don't fall through to BBD sections
 
