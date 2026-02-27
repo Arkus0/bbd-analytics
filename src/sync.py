@@ -161,6 +161,36 @@ def run_531_sync(dry_run: bool = False) -> dict:
     return {"synced": synced, "total": len(df)}
 
 
+def backup_data():
+    """Export current data as CSV for disaster recovery. Saved to backup/ dir."""
+    import os
+    os.makedirs("backup", exist_ok=True)
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    try:
+        # BBD backup
+        workouts = fetch_bbd_workouts()
+        if workouts:
+            bbd_df = workouts_to_dataframe(workouts)
+            bbd_df = add_derived_columns(bbd_df)
+            bbd_df.to_csv(f"backup/bbd_{today}.csv", index=False)
+            print(f"💾 BBD backup: {len(bbd_df)} rows → backup/bbd_{today}.csv")
+    except Exception as e:
+        print(f"⚠️  BBD backup failed: {e}")
+
+    try:
+        # 531 backup
+        from src.analytics_531 import fetch_bbb_workouts as fetch_531, workouts_to_dataframe_531, add_cycle_info
+        wk531 = fetch_531()
+        if wk531:
+            df531 = workouts_to_dataframe_531(wk531)
+            df531 = add_cycle_info(df531)
+            df531.to_csv(f"backup/bbb_{today}.csv", index=False)
+            print(f"💾 531 backup: {len(df531)} rows → backup/bbb_{today}.csv")
+    except Exception as e:
+        print(f"⚠️  531 backup failed: {e}")
+
+
 if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
     bbd_result = {"synced": 0, "total": 0, "error": None}
@@ -179,6 +209,11 @@ if __name__ == "__main__":
     except Exception as e:
         bbb_result["error"] = str(e)
         print(f"\n❌ 531 sync FAILED: {e}")
+
+    # Data backup (always runs, even if syncs failed)
+    if not dry:
+        print("\n💾 Creating data backup...")
+        backup_data()
 
     # Summary
     print(f"\nDone. BBD: {bbd_result['synced']} new. 531: {bbb_result['synced']} new.")

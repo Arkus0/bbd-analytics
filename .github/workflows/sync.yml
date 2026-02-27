@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=short
+
       - name: Run sync
         env:
           HEVY_API_KEY: ${{ secrets.HEVY_API_KEY }}
@@ -46,9 +49,26 @@ jobs:
             python -m src.sync
           fi
 
+      - name: Upload data backup
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-backup-${{ github.run_number }}
+          path: backup/
+          retention-days: 30
+          if-no-files-found: ignore
+
       - name: Summary
         if: always()
         run: |
           echo "### 🔥 BBD Sync Complete" >> $GITHUB_STEP_SUMMARY
           echo "- **Time:** $(date -u +'%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::❌ BBD Sync failed! Check logs for details."
+          echo "### ❌ Sync FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "Check the [run logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details." >> $GITHUB_STEP_SUMMARY

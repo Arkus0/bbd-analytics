@@ -67,8 +67,14 @@ def get_bbd_day_number(title: str) -> int | None:
     return None
 
 
-def fetch_all_workouts() -> list[dict]:
-    """Fetch all workouts from Hevy, paginated."""
+def fetch_all_workouts(since: str = None) -> list[dict]:
+    """
+    Fetch all workouts from Hevy, paginated.
+
+    Args:
+        since: Optional ISO date string. Stop fetching once we hit workouts
+               older than this date (Hevy returns newest first).
+    """
     all_workouts = []
     page = 1
     while True:
@@ -76,7 +82,17 @@ def fetch_all_workouts() -> list[dict]:
         wks = data.get("workouts", [])
         if not wks:
             break
-        all_workouts.extend(wks)
+
+        # Early stop: if we have a cutoff date and the oldest workout on this
+        # page is older, grab only the relevant ones and stop
+        if since:
+            relevant = [w for w in wks if w.get("start_time", "")[:10] >= since]
+            all_workouts.extend(relevant)
+            if len(relevant) < len(wks):
+                break  # Rest of pages are older — done
+        else:
+            all_workouts.extend(wks)
+
         if page >= data.get("page_count", 1):
             break
         page += 1

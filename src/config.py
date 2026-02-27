@@ -29,7 +29,54 @@ NOTION_HALL_OF_TITANS_DB = os.environ.get(
 
 # ── Program Config ───────────────────────────────────────────────────
 PROGRAM_START = "2026-02-12"
-BODYWEIGHT = 86.0
+BODYWEIGHT = 86.0  # Default — overridden by get_bodyweight() if Seguimiento DB available
+
+_cached_bodyweight: float | None = None
+
+
+def get_bodyweight() -> float:
+    """
+    Get current bodyweight, trying Notion Seguimiento DB first.
+
+    Falls back to hardcoded BODYWEIGHT if DB is not shared with integration
+    or has no entries. Caches result for the process lifetime.
+    """
+    global _cached_bodyweight
+    if _cached_bodyweight is not None:
+        return _cached_bodyweight
+
+    if NOTION_TOKEN and NOTION_SEGUIMIENTO_DB:
+        try:
+            import requests
+            r = requests.post(
+                f"https://api.notion.com/v1/databases/{NOTION_SEGUIMIENTO_DB}/query",
+                headers={
+                    "Authorization": f"Bearer {NOTION_TOKEN}",
+                    "Notion-Version": "2022-06-28",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "page_size": 1,
+                    "sorts": [{"property": "Fecha", "direction": "descending"}],
+                },
+                timeout=5,
+            )
+            if r.ok:
+                results = r.json().get("results", [])
+                if results:
+                    props = results[0].get("properties", {})
+                    # Try common property names for weight
+                    for name in ["Peso (kg)", "Peso", "Weight", "BW"]:
+                        if name in props and props[name].get("number") is not None:
+                            bw = props[name]["number"]
+                            if 40 < bw < 200:  # sanity check
+                                _cached_bodyweight = bw
+                                return bw
+        except Exception:
+            pass
+
+    _cached_bodyweight = BODYWEIGHT
+    return BODYWEIGHT
 
 DAY_CONFIG = {
     1: {"name": "Día 1 - Deadlift", "focus": "Deadlift + Piernas", "color": "#ef4444"},
