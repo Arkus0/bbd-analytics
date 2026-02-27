@@ -142,160 +142,117 @@ def _youtube_embed_url(url: str) -> str | None:
 
 
 def render_monthly_calendar(cal_data: dict):
-    """Render Google Calendar style monthly view with mobile support."""
-    from calendar import monthrange, monthcalendar
+    """Render annual calendar as pure HTML tables — works correctly on mobile."""
+    from calendar import monthcalendar
     from datetime import date
-    
+
     weeks = cal_data["weeks"]
     year = cal_data.get("year", 2026)
-    
-    # Map weeks to their data
     week_data = {w["abs_week"]: w for w in weeks}
-    
-    # Color mapping
+
     color_map = {
         "5s": "#3b82f6",
-        "3s": "#f59e0b", 
+        "3s": "#f59e0b",
         "531": "#ef4444",
         "deload": "#22c55e",
     }
-    
-    # Month names
+
     month_names = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
                    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
-    
-    # Days of week
     days_header = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-    
-    # Program start
     program_start = date(year, 1, 1)
-    
-    # Detect mobile using streamlit's query params or session state
-    # Simple detection: check screen width via JavaScript or use a toggle
-    is_mobile = st.toggle("📱 Modo móvil (mostrar 1 mes)", value=False, key="mobile_mode")
-    
+
+    is_mobile = st.toggle("📱 Vista compacta (1 mes)", value=False, key="mobile_mode")
+
     if is_mobile:
-        # Mobile: show month selector
         month_idx = st.selectbox("Mes", range(12), format_func=lambda x: month_names[x], key="month_selector")
         months_to_show = [month_idx]
     else:
-        # Desktop: show all months
         months_to_show = range(12)
-    
+
+    th_style = (
+        "text-align:center;padding:4px 2px;font-size:0.72rem;"
+        "color:#a8a29e;font-weight:600;width:14.28%;"
+    )
+
     for month_idx in months_to_show:
         month_name = month_names[month_idx]
-        
-        # Get calendar matrix for this month
         cal_matrix = monthcalendar(year, month_idx + 1)
-        
-        st.markdown(f"### {month_name} {year}")
-        
-        # Header row with days of week
-        header_cols = st.columns(7)
-        for i, day_name in enumerate(days_header):
-            with header_cols[i]:
-                st.markdown(f"**{day_name}**")
-        
-        # Each week row
+
+        html = (
+            f'<div style="margin-bottom:24px;">'
+            f'<div style="font-size:1rem;font-weight:700;margin-bottom:8px;color:#fafaf9;">'
+            f'{month_name} {year}</div>'
+            f'<table style="border-collapse:collapse;width:100%;table-layout:fixed;">'
+            f'<thead><tr>'
+        )
+        for d in days_header:
+            html += f'<th style="{th_style}">{d}</th>'
+        html += '</tr></thead><tbody>'
+
         for week in cal_matrix:
-            week_cols = st.columns(7)
-            for day_idx, day in enumerate(week):
-                with week_cols[day_idx]:
-                    if day == 0:
-                        st.markdown("")
+            html += '<tr>'
+            for day in week:
+                if day == 0:
+                    html += '<td style="padding:3px;"></td>'
+                else:
+                    current_date = date(year, month_idx + 1, day)
+                    days_since_start = (current_date - program_start).days
+                    abs_week = (days_since_start // 7) + 1
+
+                    if abs_week in week_data:
+                        w = week_data[abs_week]
+                        color = color_map.get(w["type"], "#6b7280")
+                        is_current = w["status"] == "current"
+                        border = "3px solid #2563eb" if is_current else f"2px solid {color}"
+                        html += (
+                            f'<td style="padding:3px;text-align:center;">'
+                            f'<div style="width:30px;height:30px;border-radius:50%;'
+                            f'background:{color};border:{border};'
+                            f'display:flex;align-items:center;justify-content:center;'
+                            f'margin:0 auto;font-size:11px;font-weight:bold;'
+                            f'color:white;text-shadow:0 0 2px black;">{day}</div>'
+                            f'<div style="font-size:8px;color:#a8a29e;margin-top:1px;'
+                            f'font-family:monospace;">W{abs_week}</div>'
+                            f'</td>'
+                        )
                     else:
-                        current_date = date(year, month_idx + 1, day)
-                        days_since_start = (current_date - program_start).days
-                        abs_week = (days_since_start // 7) + 1
-                        
-                        if abs_week in week_data:
-                            w = week_data[abs_week]
-                            color = color_map.get(w["type"], "#6b7280")
-                            is_current = w["status"] == "current"
-                            border_color = "#2563eb" if is_current else color
-                            border_width = "3px" if is_current else "2px"
-                            
-                            st.markdown(
-                                f"""
-                                <div style="
-                                    width: 32px;
-                                    height: 32px;
-                                    border-radius: 50%;
-                                    background-color: {color};
-                                    border: {border_width} solid {border_color};
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                    margin: 0 auto;
-                                    font-size: 12px;
-                                    font-weight: bold;
-                                    color: white;
-                                    text-shadow: 0 0 2px black;
-                                ">{day}</div>
-                                """,
-                                unsafe_allow_html=True
-                            )
-                            st.caption(f"W{abs_week}")
-                        else:
-                            st.markdown(
-                                f"""
-                                <div style="
-                                    width: 32px;
-                                    height: 32px;
-                                    border-radius: 50%;
-                                    background-color: #e5e7eb;
-                                    border: 2px solid #d1d5db;
-                                    display: flex;
-                                    align-items: center;
-                                    justify-content: center;
-                                    margin: 0 auto;
-                                    font-size: 12px;
-                                    color: #6b7280;
-                                ">{day}</div>
-                                """,
-                                unsafe_allow_html=True
-                            )
-        
-        st.markdown("---")
-    
-    # Legend
+                        html += (
+                            f'<td style="padding:3px;text-align:center;">'
+                            f'<div style="width:30px;height:30px;border-radius:50%;'
+                            f'background:#1f2937;border:1px solid #374151;'
+                            f'display:flex;align-items:center;justify-content:center;'
+                            f'margin:0 auto;font-size:11px;color:#6b7280;">{day}</div>'
+                            f'</td>'
+                        )
+            html += '</tr>'
+
+        html += '</tbody></table></div>'
+        st.markdown(html, unsafe_allow_html=True)
+
+    # Legend — flexbox HTML avoids mobile column-stacking issues
     st.markdown("### Leyenda")
-    cols = st.columns(6)
-    with cols[0]: 
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:16px;height:16px;border-radius:50%;background:#3b82f6;"></div>
-            <span>5s</span>
-        </div>
-        """, unsafe_allow_html=True)
-    with cols[1]: 
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:16px;height:16px;border-radius:50%;background:#f59e0b;"></div>
-            <span>3s</span>
-        </div>
-        """, unsafe_allow_html=True)
-    with cols[2]: 
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:16px;height:16px;border-radius:50%;background:#ef4444;"></div>
-            <span>531</span>
-        </div>
-        """, unsafe_allow_html=True)
-    with cols[3]: 
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:16px;height:16px;border-radius:50%;background:#22c55e;"></div>
-            <span>Deload</span>
-        </div>
-        """, unsafe_allow_html=True)
-    with cols[4]: 
-        st.markdown("""
-        <div style="display:flex;align-items:center;gap:5px;">
-            <div style="width:16px;height:16px;border-radius:50%;background:#6b7280;border:3px solid #2563eb;"></div>
-            <span>Actual</span>
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown(
+        '<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:4px;">'
+        '<div style="display:flex;align-items:center;gap:5px;">'
+        '<div style="width:14px;height:14px;border-radius:50%;background:#3b82f6;flex-shrink:0;"></div>'
+        '<span>5s</span></div>'
+        '<div style="display:flex;align-items:center;gap:5px;">'
+        '<div style="width:14px;height:14px;border-radius:50%;background:#f59e0b;flex-shrink:0;"></div>'
+        '<span>3s</span></div>'
+        '<div style="display:flex;align-items:center;gap:5px;">'
+        '<div style="width:14px;height:14px;border-radius:50%;background:#ef4444;flex-shrink:0;"></div>'
+        '<span>531</span></div>'
+        '<div style="display:flex;align-items:center;gap:5px;">'
+        '<div style="width:14px;height:14px;border-radius:50%;background:#22c55e;flex-shrink:0;"></div>'
+        '<span>Deload</span></div>'
+        '<div style="display:flex;align-items:center;gap:5px;">'
+        '<div style="width:14px;height:14px;border-radius:50%;background:#6b7280;'
+        'border:3px solid #2563eb;flex-shrink:0;"></div>'
+        '<span>Semana actual</span></div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
 
 _CSS_LOADED = False
@@ -1784,8 +1741,8 @@ if is_531:
                                 mode="lines", name="Training Max",
                                 line=dict(color="#64748b", dash="dash", width=1.5),
                             ))
-                        fig.update_layout(**PL_531, height=320, showlegend=True,
-                                         legend=dict(orientation="h", y=-0.15))
+                        fig.update_layout(**PL_531, height=320, showlegend=True)
+                        fig.update_layout(legend=dict(orientation="h", y=-0.15))
                         st.plotly_chart(fig, use_container_width=True)
 
                         latest = lt.iloc[-1]
