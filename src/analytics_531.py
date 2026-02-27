@@ -1560,3 +1560,348 @@ def get_kanban_data(df: pd.DataFrame) -> dict:
             })
     
     return {"todo": todo, "done": done, "upcoming": upcoming}
+
+
+# ═════════════════════════════════════════════════════════════════════
+# PHASE 4: 531-NATIVE INTELLIGENCE
+# ═════════════════════════════════════════════════════════════════════
+
+def amrap_performance_index(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compare AMRAP reps at the same %TM across mini-cycles.
+
+    Groups AMRAPs by lift + week_type (5s/3s/531) so you compare
+    apples to apples: same prescription, increasing TM.
+    If reps hold or climb despite heavier weight → real strength gain.
+    If reps drop → TM might be outpacing actual strength.
+
+    Returns one row per (lift, week_type, mini_cycle) with reps, weight,
+    e1RM, and deltas vs the previous occurrence of that same week_type.
+    """
+    amraps = df[df["set_type"] == "amrap"].copy()
+    if amraps.empty or "week_type" not in amraps.columns:
+        return pd.DataFrame()
+
+    # Filter to actual working weeks (not deload)
+    amraps = amraps[amraps["week_type"].isin([1, 2, 3])].copy()
+    if amraps.empty:
+        return pd.DataFrame()
+
+    week_labels = {1: "5s", 2: "3s", 3: "5/3/1"}
+
+    # One AMRAP per lift per session — take the best if multiple
+    grouped = (
+        amraps.sort_values("e1rm", ascending=False)
+        .drop_duplicates(subset=["date", "lift"])
+        .sort_values("date")
+    )
+
+    # Build comparison rows
+    rows = []
+    for (lift, wtype), grp in grouped.groupby(["lift", "week_type"]):
+        grp = grp.sort_values("date").reset_index(drop=True)
+        for i, row in grp.iterrows():
+            entry = {
+                "lift": lift,
+                "week_type": wtype,
+                "week_label": week_labels.get(wtype, "?"),
+                "date": row["date"],
+                "mini_cycle": row.get("mini_cycle"),
+                "macro_num": row.get("macro_num", 1),
+                "weight_kg": row["weight_kg"],
+                "reps": row["reps"],
+                "e1rm": row["e1rm"],
+                "pct_of_tm": row.get("pct_of_tm"),
+                "effective_tm": row.get("effective_tm"),
+            }
+            # Deltas vs previous same week_type
+            if i > 0:
+                prev = grp.iloc[i - 1]
+                entry["reps_delta"] = row["reps"] - prev["reps"]
+                entry["e1rm_delta"] = round(row["e1rm"] - prev["e1rm"], 1)
+                entry["weight_delta"] = row["weight_kg"] - prev["weight_kg"]
+            else:
+                entry["reps_delta"] = None
+                entry["e1rm_delta"] = None
+                entry["weight_delta"] = None
+            rows.append(entry)
+
+    result = pd.DataFrame(rows)
+    return result.sort_values(["lift", "week_type", "date"]).reset_index(drop=True)
+
+
+def tm_sustainability(df: pd.DataFrame) -> dict:
+    """
+    Per-lift TM health check based on AMRAP trends.
+
+    Rules (Wendler):
+    - 5s week AMRAP < 5 reps → TM too high
+    - 3s week AMRAP < 3 reps → TM too high
+    - 531 week AMRAP < 1 rep → TM way too high
+    - Declining reps at same week_type across cycles → TM outpacing strength
+
+    Returns dict with per-lift verdicts and an overall system health score.
+    """
+    api = amrap_performance_index(df)
+    if api.empty:
+        return {"lifts": {}, "system_health": None}
+
+    min_reps_map = {1: 5, 2: 3, 3: 1}  # week_type → absolute minimum
+    target_reps_map = {1: 8, 2: 6, 3: 3}  # week_type → healthy target
+
+    lifts_result = {}
+    for lift in api["lift"].unique():
+        lift_data = api[api["lift"] == lift].copy()
+        latest_per_week = (
+            lift_data.sort_values("date")
+            .drop_duplicates(subset=["week_type"], keep="last")
+        )
+
+        alerts = []
+        scores = []
+
+        for _, row in latest_per_week.iterrows():
+            wt = row["week_type"]
+            reps = row["reps"]
+            minimum = min_reps_map.get(wt, 1)
+            target = target_reps_map.get(wt, 5)
+            label = row["week_label"]
+
+            if reps < minimum:
+                alerts.append(f"🔴 {label}: {reps} reps (mínimo {minimum})")
+                scores.append(0.0)
+            elif reps < target:
+                alerts.append(f"🟡 {label}: {reps} reps (objetivo ≥{target})")
+                scores.append(0.5)
+            else:
+                scores.append(1.0)
+
+        # Trend: are reps declining for the most common week_type?
+        trend_status = "stable"
+        for wt in [1, 2, 3]:
+            wt_data = lift_data[lift_data["week_type"] == wt].sort_values("date")
+            if len(wt_data) >= 2:
+                reps_list = wt_data["reps"].tolist()
+                if reps_list[-1] < reps_list[-2]:
+                    trend_status = "declining"
+                elif reps_list[-1] > reps_list[-2]:
+                    trend_status = "improving"
+                break  # Use the first week_type with enough data
+
+        avg_score = sum(scores) / len(scores) if scores else None
+        if avg_score is not None:
+            if avg_score >= 0.8:
+                verdict = "🟢 TM sostenible"
+            elif avg_score >= 0.4:
+                verdict = "🟡 Vigilar"
+            else:
+                verdict = "🔴 Recalibrar TM"
+        else:
+            verdict = "⬜ Sin datos"
+
+        lifts_result[lift] = {
+            "verdict": verdict,
+            "score": round(avg_score, 2) if avg_score is not None else None,
+            "trend": trend_status,
+            "alerts": alerts,
+            "n_amraps": len(lift_data),
+        }
+
+    # System-wide health
+    all_scores = [v["score"] for v in lifts_result.values() if v["score"] is not None]
+    system_health = round(sum(all_scores) / len(all_scores), 2) if all_scores else None
+
+    return {"lifts": lifts_result, "system_health": system_health}
+
+
+def joker_analysis(df: pd.DataFrame) -> dict:
+    """
+    Joker set analysis: frequency, intensity, and trends.
+
+    Joker sets are optional heavy singles/doubles AFTER the AMRAP.
+    Overusing them adds fatigue without program benefit.
+    Underusing them misses PR opportunities on good days.
+    """
+    jokers = df[df["set_type"] == "joker"].copy()
+    all_sessions = df.drop_duplicates("hevy_id")
+
+    total_sessions = len(all_sessions)
+    sessions_with_jokers = jokers["hevy_id"].nunique() if not jokers.empty else 0
+    frequency_pct = round(sessions_with_jokers / total_sessions * 100, 1) if total_sessions > 0 else 0
+
+    if jokers.empty:
+        return {
+            "total_joker_sets": 0,
+            "sessions_with_jokers": 0,
+            "total_sessions": total_sessions,
+            "frequency_pct": 0,
+            "per_lift": {},
+            "assessment": "Sin joker sets registrados",
+        }
+
+    # Per-lift breakdown
+    per_lift = {}
+    for lift in jokers["lift"].dropna().unique():
+        lj = jokers[jokers["lift"] == lift].sort_values("date")
+        lift_sessions = df[df["lift"] == lift].drop_duplicates("hevy_id")
+
+        # Weight relative to TM
+        pct_of_tm_list = []
+        for _, row in lj.iterrows():
+            tm = row.get("effective_tm")
+            if tm and tm > 0:
+                pct_of_tm_list.append(round(row["weight_kg"] / tm * 100, 1))
+
+        per_lift[lift] = {
+            "count": len(lj),
+            "sessions": lj["hevy_id"].nunique(),
+            "lift_sessions": len(lift_sessions),
+            "best_weight": lj["weight_kg"].max(),
+            "best_e1rm": round(lj["e1rm"].max(), 1),
+            "avg_pct_of_tm": round(sum(pct_of_tm_list) / len(pct_of_tm_list), 1) if pct_of_tm_list else None,
+            "dates": lj["date"].dt.strftime("%d/%m").tolist(),
+        }
+
+    # Assessment
+    if frequency_pct > 60:
+        assessment = "🟡 Alta frecuencia — cuidado con la fatiga acumulada"
+    elif frequency_pct > 20:
+        assessment = "🟢 Uso equilibrado — aprovechando días buenos"
+    elif frequency_pct > 0:
+        assessment = "🔵 Uso conservador — podrías aprovechar más los días buenos"
+    else:
+        assessment = "⬜ Sin joker sets"
+
+    return {
+        "total_joker_sets": len(jokers),
+        "sessions_with_jokers": sessions_with_jokers,
+        "total_sessions": total_sessions,
+        "frequency_pct": frequency_pct,
+        "per_lift": per_lift,
+        "assessment": assessment,
+    }
+
+
+def bbb_fatigue_trend(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Track rep drop-off within BBB 5×10 sets and across sessions.
+
+    Within a session: are later sets losing reps? (e.g., 10,10,10,9,8)
+    Across sessions: is the average reps trend declining as BBB% increases?
+
+    Returns one row per BBB session with fatigue metrics.
+    """
+    bbb = df[df["set_type"].str.startswith("bbb")].copy()
+    if bbb.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for (hevy_id, lift), grp in bbb.groupby(["hevy_id", "lift"]):
+        grp = grp.sort_values("set_number")
+        reps_list = grp["reps"].tolist()
+        n_sets = len(reps_list)
+        if n_sets == 0:
+            continue
+
+        avg_reps = sum(reps_list) / n_sets
+        first_half = reps_list[:n_sets // 2] if n_sets >= 4 else reps_list[:1]
+        second_half = reps_list[n_sets // 2:] if n_sets >= 4 else reps_list[1:]
+
+        avg_first = sum(first_half) / len(first_half) if first_half else 0
+        avg_second = sum(second_half) / len(second_half) if second_half else 0
+        rep_dropoff = round(avg_first - avg_second, 1)
+
+        # % of TM
+        tm = grp["effective_tm"].iloc[0] if "effective_tm" in grp.columns else None
+        pct_tm = round(grp["weight_kg"].iloc[0] / tm * 100, 1) if tm and tm > 0 else None
+
+        rows.append({
+            "date": grp["date"].iloc[0],
+            "lift": lift,
+            "hevy_id": hevy_id,
+            "weight_kg": grp["weight_kg"].iloc[0],
+            "n_sets": n_sets,
+            "reps_list": reps_list,
+            "avg_reps": round(avg_reps, 1),
+            "rep_dropoff": rep_dropoff,
+            "min_reps": min(reps_list),
+            "all_tens": all(r >= 10 for r in reps_list),
+            "pct_of_tm": pct_tm,
+            "macro_num": grp["macro_num"].iloc[0] if "macro_num" in grp.columns else None,
+        })
+
+    result = pd.DataFrame(rows).sort_values("date").reset_index(drop=True)
+
+    # Overall fatigue classification per session
+    def _classify(row):
+        if row["all_tens"]:
+            return "🟢 Sin fatiga"
+        elif row["rep_dropoff"] <= 1:
+            return "🟡 Fatiga leve"
+        else:
+            return "🔴 Fatiga alta"
+
+    if not result.empty:
+        result["fatigue_status"] = result.apply(_classify, axis=1)
+
+    return result
+
+
+def true_1rm_trend(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Estimated true 1RM over time, derived from AMRAP performance.
+
+    The TM is NOT your 1RM — it's a training tool at ~85-90% of true max.
+    This function estimates actual 1RM from AMRAP e1RMs, which is a much
+    better indicator of real strength than the programmed TM.
+
+    Returns one row per AMRAP with estimated true 1RM and trend.
+    """
+    amraps = df[df["set_type"] == "amrap"].copy()
+    if amraps.empty:
+        return pd.DataFrame()
+
+    # One best AMRAP per lift per session
+    best = (
+        amraps.sort_values("e1rm", ascending=False)
+        .drop_duplicates(subset=["date", "lift"])
+        .sort_values("date")
+    )
+
+    rows = []
+    for lift in best["lift"].unique():
+        lift_data = best[best["lift"] == lift].sort_values("date").reset_index(drop=True)
+        for i, row in lift_data.iterrows():
+            entry = {
+                "date": row["date"],
+                "lift": lift,
+                "weight_kg": row["weight_kg"],
+                "reps": row["reps"],
+                "estimated_1rm": round(row["e1rm"], 1),
+                "effective_tm": row.get("effective_tm"),
+                "macro_num": row.get("macro_num", 1),
+            }
+            # TM as % of estimated 1RM
+            if entry["effective_tm"] and entry["estimated_1rm"] > 0:
+                entry["tm_as_pct_of_1rm"] = round(
+                    entry["effective_tm"] / entry["estimated_1rm"] * 100, 1
+                )
+            else:
+                entry["tm_as_pct_of_1rm"] = None
+
+            # Delta vs previous
+            if i > 0:
+                prev = lift_data.iloc[i - 1]
+                entry["e1rm_delta"] = round(row["e1rm"] - prev["e1rm"], 1)
+            else:
+                entry["e1rm_delta"] = None
+
+            rows.append(entry)
+
+    result = pd.DataFrame(rows)
+
+    # Running max (all-time best) per lift
+    if not result.empty:
+        result["running_max"] = result.groupby("lift")["estimated_1rm"].cummax()
+
+    return result.sort_values(["lift", "date"]).reset_index(drop=True)

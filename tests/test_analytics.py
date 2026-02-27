@@ -315,3 +315,178 @@ class TestBbbWorkoutDetection:
     def test_reject_bbd(self):
         from src.analytics_531 import is_bbb_workout
         assert is_bbb_workout({"title": "Día 1", "id": "y"}) is False
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# 531 INTELLIGENCE TESTS (Phase 4)
+# ═══════════════════════════════════════════════════════════════════════
+
+def _make_531_df(rows: list[dict]) -> pd.DataFrame:
+    """Helper: build a minimal 531 DataFrame with required columns."""
+    defaults = {
+        "hevy_id": "test-001",
+        "exercise": "Overhead Press",
+        "exercise_template_id": "073032BB",
+        "lift": "ohp",
+        "set_type": "amrap",
+        "set_number": 6,
+        "weight_kg": 50.0,
+        "reps": 8,
+        "volume_kg": 400.0,
+        "e1rm": 63.3,
+        "muscle_group": "Hombros",
+        "effective_tm": 58.0,
+        "week_type": 1,
+        "week_name": "5s",
+        "mini_cycle": 1,
+        "macro_num": 1,
+        "week_in_macro": 1,
+    }
+    full_rows = []
+    for r in rows:
+        row = {**defaults, **r}
+        row["date"] = pd.Timestamp(row["date"]) if isinstance(row.get("date"), str) else row.get("date", pd.Timestamp("2026-02-20"))
+        full_rows.append(row)
+    return pd.DataFrame(full_rows)
+
+
+class TestAmrapPerformanceIndex:
+    """AMRAP Performance Index — same week_type comparison across cycles."""
+
+    def test_single_amrap_no_delta(self):
+        from src.analytics_531 import amrap_performance_index
+        df = _make_531_df([
+            {"date": "2026-02-20", "lift": "ohp", "week_type": 1, "reps": 10, "e1rm": 66.7},
+        ])
+        result = amrap_performance_index(df)
+        assert len(result) == 1
+        assert result.iloc[0]["reps_delta"] is None
+
+    def test_two_cycles_shows_delta(self):
+        from src.analytics_531 import amrap_performance_index
+        df = _make_531_df([
+            {"date": "2026-02-20", "lift": "ohp", "week_type": 1, "reps": 10, "e1rm": 66.7,
+             "mini_cycle": 1, "macro_num": 1, "weight_kg": 50},
+            {"date": "2026-03-13", "lift": "ohp", "week_type": 1, "reps": 8, "e1rm": 68.0,
+             "mini_cycle": 2, "macro_num": 1, "weight_kg": 52},
+        ])
+        result = amrap_performance_index(df)
+        assert len(result) == 2
+        assert result.iloc[1]["reps_delta"] == -2  # 8 - 10
+        assert result.iloc[1]["e1rm_delta"] == 1.3  # 68 - 66.7
+
+    def test_ignores_deload_week(self):
+        from src.analytics_531 import amrap_performance_index
+        df = _make_531_df([
+            {"date": "2026-02-20", "lift": "ohp", "week_type": 4, "reps": 5, "e1rm": 50.0},
+        ])
+        result = amrap_performance_index(df)
+        assert result.empty  # week_type 4 = deload, filtered out
+
+
+class TestTmSustainability:
+    """TM Sustainability — are AMRAPs hitting minimums?"""
+
+    def test_healthy_amraps(self):
+        from src.analytics_531 import tm_sustainability
+        df = _make_531_df([
+            {"date": "2026-02-20", "lift": "ohp", "week_type": 1, "reps": 10, "e1rm": 66.7},
+            {"date": "2026-02-21", "lift": "ohp", "week_type": 2, "reps": 8, "e1rm": 70.0},
+            {"date": "2026-02-22", "lift": "ohp", "week_type": 3, "reps": 5, "e1rm": 72.0},
+        ])
+        result = tm_sustainability(df)
+        assert result["lifts"]["ohp"]["verdict"] == "🟢 TM sostenible"
+        assert result["system_health"] >= 0.8
+
+    def test_failing_amrap(self):
+        from src.analytics_531 import tm_sustainability
+        df = _make_531_df([
+            {"date": "2026-02-20", "lift": "ohp", "week_type": 1, "reps": 3, "e1rm": 55.0},
+            {"date": "2026-02-21", "lift": "ohp", "week_type": 2, "reps": 1, "e1rm": 58.0},
+        ])
+        result = tm_sustainability(df)
+        assert "🔴" in result["lifts"]["ohp"]["verdict"]
+
+
+class TestJokerAnalysis:
+    """Joker Set Analysis."""
+
+    def test_no_jokers(self):
+        from src.analytics_531 import joker_analysis
+        df = _make_531_df([
+            {"date": "2026-02-20", "set_type": "amrap", "hevy_id": "a"},
+        ])
+        result = joker_analysis(df)
+        assert result["total_joker_sets"] == 0
+        assert result["frequency_pct"] == 0
+
+    def test_with_jokers(self):
+        from src.analytics_531 import joker_analysis
+        df = _make_531_df([
+            {"date": "2026-02-20", "set_type": "amrap", "hevy_id": "a", "lift": "ohp"},
+            {"date": "2026-02-20", "set_type": "joker", "hevy_id": "a", "lift": "ohp",
+             "weight_kg": 60, "e1rm": 60, "effective_tm": 58},
+        ])
+        result = joker_analysis(df)
+        assert result["total_joker_sets"] == 1
+        assert result["sessions_with_jokers"] == 1
+        assert "ohp" in result["per_lift"]
+
+
+class TestBbbFatigueTrend:
+    """BBB Fatigue — rep drop-off in 5×10 sets."""
+
+    def test_perfect_fives(self):
+        from src.analytics_531 import bbb_fatigue_trend
+        df = _make_531_df([
+            {"date": "2026-02-20", "set_type": "bbb", "hevy_id": "a", "lift": "ohp",
+             "set_number": i, "reps": 10, "weight_kg": 30, "volume_kg": 300,
+             "effective_tm": 58, "macro_num": 1}
+            for i in range(1, 6)
+        ])
+        result = bbb_fatigue_trend(df)
+        assert len(result) == 1
+        assert result.iloc[0]["all_tens"] == True
+        assert result.iloc[0]["rep_dropoff"] == 0.0
+        assert result.iloc[0]["fatigue_status"] == "🟢 Sin fatiga"
+
+    def test_fatigued_sets(self):
+        from src.analytics_531 import bbb_fatigue_trend
+        reps = [10, 10, 9, 8, 7]
+        df = _make_531_df([
+            {"date": "2026-02-20", "set_type": "bbb", "hevy_id": "a", "lift": "ohp",
+             "set_number": i + 1, "reps": reps[i], "weight_kg": 30, "volume_kg": 30 * reps[i],
+             "effective_tm": 58, "macro_num": 1}
+            for i in range(5)
+        ])
+        result = bbb_fatigue_trend(df)
+        assert result.iloc[0]["rep_dropoff"] > 0
+        assert result.iloc[0]["all_tens"] == False
+
+
+class TestTrue1rmTrend:
+    """True 1RM estimation from AMRAP performance."""
+
+    def test_basic_trend(self):
+        from src.analytics_531 import true_1rm_trend
+        df = _make_531_df([
+            {"date": "2026-02-20", "lift": "ohp", "set_type": "amrap",
+             "weight_kg": 50, "reps": 10, "e1rm": 66.7, "effective_tm": 58},
+            {"date": "2026-03-13", "lift": "ohp", "set_type": "amrap",
+             "weight_kg": 52, "reps": 8, "e1rm": 65.9, "effective_tm": 60},
+        ])
+        result = true_1rm_trend(df)
+        assert len(result) == 2
+        assert "running_max" in result.columns
+        assert result.iloc[0]["running_max"] == 66.7
+        assert result.iloc[1]["running_max"] == 66.7  # Running max stays
+
+    def test_tm_as_pct(self):
+        from src.analytics_531 import true_1rm_trend
+        df = _make_531_df([
+            {"date": "2026-02-20", "lift": "ohp", "set_type": "amrap",
+             "weight_kg": 50, "reps": 10, "e1rm": 66.7, "effective_tm": 58},
+        ])
+        result = true_1rm_trend(df)
+        # TM 58 / e1RM 66.7 ≈ 86.9%
+        assert 85 < result.iloc[0]["tm_as_pct_of_1rm"] < 90

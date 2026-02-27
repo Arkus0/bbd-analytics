@@ -21,6 +21,8 @@ from src.analytics_531 import (
     joker_sets_summary, validate_tm, cycle_comparison,
     fsl_compliance,
     training_calendar, build_annual_calendar,
+    amrap_performance_index, tm_sustainability, joker_analysis,
+    bbb_fatigue_trend, true_1rm_trend,
 )
 from src.config_531 import (
     DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
@@ -410,6 +412,7 @@ with st.sidebar:
             "📊 Dashboard",
             "🎯 AMRAP Tracker",
             "📈 Progresión",
+            "🧠 Inteligencia",
             "🏋️ Strength Standards",
             "💪 Sesiones",
             "🏆 PRs",
@@ -1015,6 +1018,214 @@ if is_531:
                     })
             if bump_points:
                 st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🧠 INTELIGENCIA 531
+    # ══════════════════════════════════════════════════════════════════════
+    elif page == "🧠 Inteligencia":
+        st.markdown("## 🧠 Inteligencia 5/3/1")
+
+        if df_531.empty or df_531[df_531["set_type"] == "amrap"].empty:
+            st.info("Necesitas al menos 1 AMRAP registrado para ver métricas de inteligencia.")
+        else:
+            lift_names = {"ohp": "OHP", "deadlift": "Peso Muerto", "bench": "Banca", "squat": "Sentadilla"}
+
+            tab_tm, tab_perf, tab_joker, tab_bbb, tab_1rm = st.tabs([
+                "🎯 Sostenibilidad TM",
+                "📊 AMRAP Performance",
+                "⚡ Joker Sets",
+                "🏋️ Fatiga BBB",
+                "📈 1RM Estimado",
+            ])
+
+            # ── Tab 1: TM Sustainability ──
+            with tab_tm:
+                st.markdown("### ¿Tu Training Max es sostenible?")
+                st.caption("Basado en reps AMRAP vs mínimos de Wendler. Si no llegas al mínimo, el TM es demasiado alto.")
+
+                sus = tm_sustainability(df_531)
+
+                if sus["system_health"] is not None:
+                    health = sus["system_health"]
+                    if health >= 0.8:
+                        color, emoji = "green", "🟢"
+                    elif health >= 0.4:
+                        color, emoji = "orange", "🟡"
+                    else:
+                        color, emoji = "red", "🔴"
+                    st.markdown(f"**Salud del sistema:** {emoji} {health:.0%}")
+
+                cols = st.columns(len(sus["lifts"]) or 1)
+                for i, (lift, data) in enumerate(sus["lifts"].items()):
+                    with cols[i % len(cols)]:
+                        st.markdown(f"**{lift_names.get(lift, lift)}**")
+                        st.markdown(f"{data['verdict']}")
+                        if data["trend"] == "declining":
+                            st.caption("📉 Reps en descenso")
+                        elif data["trend"] == "improving":
+                            st.caption("📈 Reps mejorando")
+                        else:
+                            st.caption("➡️ Reps estables")
+                        if data["alerts"]:
+                            for alert in data["alerts"]:
+                                st.warning(alert)
+
+                # Also show validate_tm recommendations
+                st.divider()
+                st.markdown("### Recomendaciones TM")
+                vtm = validate_tm(df_531)
+                if vtm:
+                    vtm_rows = []
+                    for lift, info in vtm.items():
+                        vtm_rows.append({
+                            "Lift": lift_names.get(lift, lift),
+                            "Estado": "✅" if info["status"] == "ok" else ("⬆️ Subir" if info["status"] == "too_light" else "⬇️ Bajar"),
+                            "TM Actual": f"{info['current_tm']:.0f} kg",
+                            "TM Recomendado": f"{info['recommended_tm']:.0f} kg",
+                            "Delta": f"{info['tm_delta']:+.0f} kg",
+                            "Avg Reps +Min": f"{info['avg_reps_over_min']:+.1f}",
+                        })
+                    st.dataframe(pd.DataFrame(vtm_rows), use_container_width=True, hide_index=True)
+
+            # ── Tab 2: AMRAP Performance Index ──
+            with tab_perf:
+                st.markdown("### Rendimiento AMRAP — Misma semana, ¿más reps?")
+                st.caption("Compara tus AMRAP en el mismo tipo de semana (5s/3s/531) a lo largo de los ciclos. "
+                           "Mantener o subir reps con más peso = progreso real.")
+
+                api = amrap_performance_index(df_531)
+                if api.empty:
+                    st.info("Necesitas al menos 2 ciclos para comparar.")
+                else:
+                    for lift in api["lift"].unique():
+                        st.markdown(f"#### {lift_names.get(lift, lift)}")
+                        lift_api = api[api["lift"] == lift].copy()
+
+                        # Chart: e1RM over time colored by week_type
+                        import plotly.express as px
+                        fig = px.scatter(
+                            lift_api, x="date", y="e1rm",
+                            color="week_label", size="reps",
+                            hover_data=["weight_kg", "reps", "reps_delta", "e1rm_delta"],
+                            labels={"e1rm": "e1RM (kg)", "date": "", "week_label": "Semana"},
+                        )
+                        fig.update_layout(**PL, height=300)
+                        fig.update_traces(marker=dict(line=dict(width=1, color="white")))
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Summary table
+                        display = lift_api[["date", "week_label", "weight_kg", "reps",
+                                           "e1rm", "reps_delta", "e1rm_delta"]].copy()
+                        display.columns = ["Fecha", "Semana", "Peso", "Reps", "e1RM",
+                                          "Δ Reps", "Δ e1RM"]
+                        display["Fecha"] = display["Fecha"].dt.strftime("%d/%m")
+                        st.dataframe(display, use_container_width=True, hide_index=True)
+
+            # ── Tab 3: Joker Analysis ──
+            with tab_joker:
+                st.markdown("### Joker Sets — Uso y tendencia")
+                st.caption("Singles/doubles pesados después del AMRAP. "
+                           "Bien usados aprovechan días buenos. Abusados acumulan fatiga.")
+
+                ja = joker_analysis(df_531)
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Joker Sets", ja["total_joker_sets"])
+                c2.metric("Sesiones con Jokers", f"{ja['sessions_with_jokers']}/{ja['total_sessions']}")
+                c3.metric("Frecuencia", f"{ja['frequency_pct']}%")
+
+                st.markdown(f"**Valoración:** {ja['assessment']}")
+
+                if ja["per_lift"]:
+                    st.divider()
+                    for lift, data in ja["per_lift"].items():
+                        with st.expander(f"{lift_names.get(lift, lift)} — {data['count']} joker sets"):
+                            jc1, jc2, jc3 = st.columns(3)
+                            jc1.metric("Mejor peso", f"{data['best_weight']:.0f} kg")
+                            jc2.metric("Mejor e1RM", f"{data['best_e1rm']:.0f} kg")
+                            if data['avg_pct_of_tm']:
+                                jc3.metric("Media %TM", f"{data['avg_pct_of_tm']:.0f}%")
+
+            # ── Tab 4: BBB Fatigue ──
+            with tab_bbb:
+                st.markdown("### Fatiga en BBB 5×10")
+                st.caption("¿Pierdes reps en las últimas series del 5×10? "
+                           "Si el dropoff es alto, el % BBB puede ser excesivo.")
+
+                bf = bbb_fatigue_trend(df_531)
+                if bf.empty:
+                    st.info("Sin datos BBB registrados.")
+                else:
+                    # Summary metrics
+                    avg_dropoff = bf["rep_dropoff"].mean()
+                    pct_perfect = (bf["all_tens"].sum() / len(bf) * 100)
+                    bc1, bc2, bc3 = st.columns(3)
+                    bc1.metric("Drop-off medio", f"{avg_dropoff:+.1f} reps")
+                    bc2.metric("Sesiones 5×10 completas", f"{pct_perfect:.0f}%")
+                    bc3.metric("Sesiones BBB", len(bf))
+
+                    # Per-lift detail
+                    for lift in bf["lift"].unique():
+                        lf = bf[bf["lift"] == lift].sort_values("date")
+                        st.markdown(f"#### {lift_names.get(lift, lift)}")
+
+                        display = lf[["date", "weight_kg", "reps_list", "avg_reps",
+                                      "rep_dropoff", "pct_of_tm", "fatigue_status"]].copy()
+                        display.columns = ["Fecha", "Peso", "Reps", "Media", "Dropoff",
+                                          "%TM", "Estado"]
+                        display["Fecha"] = display["Fecha"].dt.strftime("%d/%m")
+                        display["Reps"] = display["Reps"].apply(lambda x: ", ".join(str(r) for r in x))
+                        st.dataframe(display, use_container_width=True, hide_index=True)
+
+            # ── Tab 5: True 1RM Trend ──
+            with tab_1rm:
+                st.markdown("### 1RM Real Estimado")
+                st.caption("Tu 1RM real estimado desde AMRAPs — NO es tu Training Max. "
+                           "El TM debería ser ~85-90% de este valor.")
+
+                t1rm = true_1rm_trend(df_531)
+                if t1rm.empty:
+                    st.info("Sin AMRAPs para estimar.")
+                else:
+                    import plotly.graph_objects as go
+
+                    for lift in t1rm["lift"].unique():
+                        lt = t1rm[t1rm["lift"] == lift].sort_values("date")
+                        st.markdown(f"#### {lift_names.get(lift, lift)}")
+
+                        fig = go.Figure()
+                        fig.add_trace(go.Scatter(
+                            x=lt["date"], y=lt["estimated_1rm"],
+                            mode="lines+markers", name="e1RM estimado",
+                            line=dict(color="#10b981", width=2),
+                            marker=dict(size=8),
+                        ))
+                        fig.add_trace(go.Scatter(
+                            x=lt["date"], y=lt["running_max"],
+                            mode="lines", name="Máximo histórico",
+                            line=dict(color="#f59e0b", dash="dot", width=1),
+                        ))
+                        if lt["effective_tm"].notna().any():
+                            fig.add_trace(go.Scatter(
+                                x=lt["date"], y=lt["effective_tm"],
+                                mode="lines", name="Training Max",
+                                line=dict(color="#ef4444", dash="dash", width=1),
+                            ))
+                        fig.update_layout(**PL, height=300, showlegend=True,
+                                         legend=dict(orientation="h", y=-0.15))
+                        st.plotly_chart(fig, use_container_width=True)
+
+                        # Latest stats
+                        latest = lt.iloc[-1]
+                        rc1, rc2, rc3 = st.columns(3)
+                        rc1.metric("e1RM actual", f"{latest['estimated_1rm']:.0f} kg",
+                                  delta=f"{latest['e1rm_delta']:+.0f} kg" if pd.notna(latest.get("e1rm_delta")) else None)
+                        rc2.metric("Running max", f"{latest['running_max']:.0f} kg")
+                        if pd.notna(latest.get("tm_as_pct_of_1rm")):
+                            pct = latest["tm_as_pct_of_1rm"]
+                            rc3.metric("TM como % de 1RM",
+                                      f"{pct:.0f}%",
+                                      delta="OK" if 82 <= pct <= 92 else ("Alto" if pct > 92 else "Bajo"),
+                                      delta_color="normal" if 82 <= pct <= 92 else "inverse")
 
     st.stop()  # Don't fall through to BBD sections
 

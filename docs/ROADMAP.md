@@ -90,28 +90,33 @@
 
 ---
 
-## Phase 4: Feature Parity (531 ↔ BBD) 🚀
-> Port proven BBD features to 531.
+## Phase 4: 531-Native Intelligence 🚀
+> Features designed specifically for 531 BBB methodology — NOT ports from BBD.
 
-### 4.1 — 531 Plateau Detection
-- **Problem**: BBD has plateau detection (3+ weeks no e1RM improvement). 531 doesn't.
-- **Fix**: Adapt `plateau_detection()` for 531 AMRAP e1RMs per lift.
-- **Effort**: 25 min
+### 4.1 — AMRAP Performance Index
+- **What**: Compare AMRAP reps at the same %TM across mini-cycles. Same prescription, heavier weight — are reps holding?
+- **Why**: The only real measure of strength gain in 531. TM goes up automatically; reps tell you if it's earned.
+- **Status**: ✅ Done
 
-### 4.2 — 531 ACWR (Acute:Chronic Workload Ratio)
-- **Problem**: BBD tracks injury risk via volume ratios. 531 doesn't.
-- **Fix**: Implement ACWR on 531 weekly volume data.
-- **Effort**: 25 min
+### 4.2 — TM Sustainability Check
+- **What**: Per-lift health score based on Wendler's minimums (5s week ≥5, 3s week ≥3, 531 week ≥1). Trend tracking.
+- **Why**: Catches TM creep before it becomes a problem. Recommends recalibration proactively.
+- **Status**: ✅ Done
 
-### 4.3 — 531 Fatigue & Density Analysis
-- **Problem**: BBD has intra-session fatigue and session density trends. 531 doesn't.
-- **Fix**: Port fatigue/density functions to 531 context.
-- **Effort**: 30 min
+### 4.3 — Joker Set Analysis
+- **What**: Frequency, intensity relative to TM, per-lift breakdown. Assessment of usage pattern.
+- **Why**: Jokers are autoregulated — tracking them reveals training tendencies and fatigue risk.
+- **Status**: ✅ Done
 
-### 4.4 — 531 Gamification
-- **Problem**: BBD has 30 achievements, 10 levels, XP. 531 has nothing.
-- **Fix**: Design 531-specific achievements (AMRAP milestones, TM milestones, cycle completions, joker set badges).
-- **Effort**: 45 min
+### 4.4 — BBB Volume Fatigue Trend
+- **What**: Rep drop-off within 5×10 sets (first half vs second half), perfect completion rate, per-lift tracking.
+- **Why**: If BBB% is too high, reps drop in later sets. Catches this before it affects recovery.
+- **Status**: ✅ Done
+
+### 4.5 — True 1RM Trend
+- **What**: Estimated real 1RM from AMRAP performance over time. Running max, TM as % of 1RM.
+- **Why**: TM is a training tool, not a strength measure. This shows actual strength trajectory.
+- **Status**: ✅ Done
 
 ---
 
@@ -146,22 +151,23 @@
 
 | # | Item | Est. | Status |
 |---|------|------|--------|
-| 1 | 0.1 BODYWEIGHT single source | 5m | ⬜ |
-| 2 | 0.2 get_effective_tm fix | 15m | ⬜ |
-| 3 | 0.3 PR detection by template_id | 10m | ⬜ |
-| 4 | 1.1 Hevy client retry + rate limit | 20m | ⬜ |
-| 5 | 1.2 Sync isolation | 10m | ⬜ |
-| 6 | 1.3 Notion _patch rate limit | 2m | ⬜ |
-| 7 | 1.4 Dashboard graceful degradation | 15m | ⬜ |
-| 8 | 2.1 Dedup week assignment | 15m | ⬜ |
-| 9 | 2.2 Test suite | 45m | ⬜ |
-| 10 | 3.1 Incremental Hevy fetch | 20m | ⬜ |
-| 11 | 3.2 Dynamic bodyweight | 20m | ⬜ |
-| 12 | 3.3 Data backup artifacts | 15m | ⬜ |
-| 13 | 3.4 Sync failure notifications | 20m | ⬜ |
-| 14 | 4.1 531 Plateau Detection | 25m | ⬜ |
-| 15 | 4.2 531 ACWR | 25m | ⬜ |
-| 16 | 4.3 531 Fatigue & Density | 30m | ⬜ |
-| 17 | 4.4 531 Gamification | 45m | ⬜ |
-| 18 | 2.3 Split app.py | 30m | ⬜ |
-| 19 | 5.x New features | TBD | ⬜ |
+| 1 | 0.1 BODYWEIGHT single source | 5m | ✅ |
+| 2 | 0.2 get_effective_tm fix | 15m | ✅ |
+| 3 | 0.3 PR detection by template_id | 10m | ✅ |
+| 4 | 1.1 Hevy client retry + rate limit | 20m | ✅ |
+| 5 | 1.2 Sync isolation | 10m | ✅ |
+| 6 | 1.3 Notion _patch rate limit | 2m | ✅ |
+| 7 | 1.4 Dashboard graceful degradation | 15m | ✅ |
+| 8 | 2.1 Dedup week assignment | 15m | ✅ |
+| 9 | 2.2 Test suite (39 tests) | 45m | ✅ |
+| 10 | 3.1 Incremental Hevy fetch | 20m | ✅ |
+| 11 | 3.2 Dynamic bodyweight | 20m | ✅ |
+| 12 | 3.3 Data backup artifacts | 15m | ✅ |
+| 13 | 3.4 CI: tests + artifacts + notifications | 20m | ✅ |
+| 14 | 4.1 AMRAP Performance Index | 25m | ✅ |
+| 15 | 4.2 TM Sustainability | 25m | ✅ |
+| 16 | 4.3 Joker Set Analysis | 20m | ✅ |
+| 17 | 4.4 BBB Fatigue Trend | 25m | ✅ |
+| 18 | 4.5 True 1RM Trend | 20m | ✅ |
+| 19 | 2.3 Split app.py | 30m | ⬜ |
+| 20 | 5.x New features | TBD | ⬜ |
