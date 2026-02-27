@@ -663,6 +663,23 @@ def _inject_531_css():
         .stDataFrame {
             font-family: 'IBM Plex Mono', monospace !important;
         }
+
+        /* ── Mobile responsive ─────────────────────── */
+        @media (max-width: 768px) {
+            div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+            div[data-testid="stHorizontalBlock"] > div {
+                flex: 1 1 100% !important; min-width: 100% !important;
+            }
+            .stApp h1 { font-size: 1.4rem !important; }
+            .stApp h2 { font-size: 1.2rem !important; }
+            .stApp h3 { font-size: 1.05rem !important; }
+            div[data-testid="stMetric"] { padding: 10px !important; }
+            iframe { max-height: 220px !important; }
+            div[data-testid="stExpander"] summary { font-size: 0.9rem !important; }
+            .sf-header { font-size: 1.2rem !important; }
+            .sf-subheader { font-size: 0.95rem !important; }
+            .sf-gauge .pct { font-size: 2.2rem !important; }
+        }
     </style>
     """, unsafe_allow_html=True)
 
