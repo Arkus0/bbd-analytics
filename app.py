@@ -348,26 +348,7 @@ _531_error = None
 
 try:
     raw_df = load_raw_data()
-    df = add_derived_columns(raw_df)
-
-    # ── Force week assignment here (cycle-aware, by hevy_id) ──
-    _sessions = (
-        df.dropna(subset=["day_num"])
-        .drop_duplicates("hevy_id")[["hevy_id", "date", "day_num"]]
-        .sort_values("date")
-        .reset_index(drop=True)
-    )
-    _week = 1
-    _prev_day = None
-    _hevy_week = {}
-    for _, _row in _sessions.iterrows():
-        _d = int(_row["day_num"])
-        if _prev_day is not None and _d <= _prev_day:
-            _week += 1
-        _hevy_week[_row["hevy_id"]] = _week
-        _prev_day = _d
-    if _hevy_week:
-        df["week"] = df["hevy_id"].map(_hevy_week).fillna(1).astype(int)
+    df = add_derived_columns(raw_df)  # includes cycle-aware week assignment
 except Exception as e:
     _bbd_error = str(e)
     df = pd.DataFrame()

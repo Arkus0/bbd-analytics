@@ -24,48 +24,9 @@ from src.config import (
 
 
 def calc_week(date: pd.Timestamp) -> int:
-    """Fallback: calendar-based week. Prefer build_week_map for cycle-aware calc."""
+    """Fallback: calendar-based week number from program start."""
     delta = (date - pd.Timestamp(PROGRAM_START)).days
     return max(1, (delta // 7) + 1)
-
-
-def build_week_map(df: pd.DataFrame) -> dict:
-    """
-    Assign week numbers based on BBD day cycle, not calendar.
-
-    A new week starts whenever day_num resets lower than the previous session
-    (e.g., after Day 6 comes Day 1, or after any rest/skip the cycle restarts).
-    The first partial week (e.g., starting on Day 4) is Week 1.
-
-    Returns a dict mapping date -> week_number.
-    """
-    if df.empty or "day_num" not in df.columns:
-        return {}
-
-    # One row per unique training date with the day_num of that session
-    sessions = (
-        df.dropna(subset=["day_num"])
-        .drop_duplicates("date")[["date", "day_num"]]
-        .sort_values("date")
-        .reset_index(drop=True)
-    )
-
-    week = 1
-    week_map = {}
-    prev_day = None
-
-    for _, row in sessions.iterrows():
-        day = row["day_num"]
-        # Normalize to date-only Timestamp (strip tz and time)
-        date = pd.Timestamp(row["date"].date())
-        # Cycle reset: current day is less than or equal to the previous day
-        # (only bump when it's not the very first session)
-        if prev_day is not None and day <= prev_day:
-            week += 1
-        week_map[date] = week
-        prev_day = day
-
-    return week_map
 
 
 def add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
