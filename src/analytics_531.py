@@ -144,18 +144,22 @@ def parse_workout_sets(workout: dict) -> list[dict]:
 
 def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
     """
-    Classify individual sets of a main lift exercise using TM-based detection.
+    Classify individual sets of a main lift exercise.
 
-    Uses known Training Max to identify working sets by matching expected
-    percentages (65/75/85, 70/80/90, or 75/85/95 of TM), then classifies:
+    Infers the session TM from the data itself (instead of relying on the
+    current static TM, which may have been recalibrated after the session).
+    Uses both weight matching AND rep patterns to distinguish:
 
     - warmup: lighter sets before the working sets
-    - working_531: the 3 prescribed 531 sets (ascending weight)
-    - amrap: the last working set (heaviest of the 3, often high reps)
-    - joker: sets HEAVIER than the top working weight, low reps (1-5)
+    - working_531: the first 2 prescribed 531 sets (ascending weight)
+    - amrap: the last working set (heaviest of the 3, typically high reps)
+    - joker: sets AFTER the working block that are HEAVIER, low reps (1-5)
     - bbb: 5×10 supplemental at ~50% TM (consistent low weight, high reps)
     - fsl: First Set Last — weight ≈ first working set, moderate reps (5-8)
     - bbb_amrap: last BBB set if reps significantly exceed the others
+
+    Key insight: warmup, working sets, and BBB are predetermined from the TM.
+    Jokers, FSL, and BBB AMRAP are mutable per session.
 
     Returns list of {type, weight, reps, set_num}.
     """
@@ -170,39 +174,98 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
     if not parsed:
         return []
 
-    tm = TRAINING_MAX.get(lift)
-    if not tm:
-        # Fallback: old heuristic if no TM
+    base_tm = TRAINING_MAX.get(lift)
+    if not base_tm:
         return _classify_main_lift_sets_fallback(parsed)
 
-    # ── Step 1: Detect which week type by matching expected weights ──
+    # ── Step 1: Detect working sets using multi-TM + rep-pattern scoring ──
+    # Try the current TM and also TMs inferred from each candidate triplet.
+    # The AMRAP (top working set) should have high reps; jokers are heavier
+    # with low reps.  Scoring rewards both weight accuracy and AMRAP rep signal.
+
+    # Build candidate TMs: current TM ± several increments
+    increment = TM_INCREMENT.get(lift, 2)
+    candidate_tms = set()
+    for offset in range(-6, 2):  # try TMs from 6 bumps below to 1 above
+        candidate_tms.add(base_tm + offset * increment)
+
+    # Also infer TMs from the data itself: for each triplet of ascending
+    # non-warmup sets, back-calculate what TM they'd imply for each week.
+    week_top_pcts = {1: 0.85, 2: 0.90, 3: 0.95}
+    for start in range(len(parsed) - 2):
+        triplet = parsed[start:start + 3]
+        if triplet[0]["hevy_type"] == "warmup":
+            continue
+        if not (triplet[0]["weight"] <= triplet[1]["weight"] <= triplet[2]["weight"]):
+            continue
+        top_w = triplet[2]["weight"]
+        for wk, pct in week_top_pcts.items():
+            inferred = round_to_plate(top_w / pct)
+            candidate_tms.add(inferred)
+
     best_week = None
-    best_score = -1
+    best_score = -999
     working_indices = None
 
-    for week_num in [1, 2, 3]:
-        exp = expected_weights(lift, week_num, tm_override=tm)
-        if not exp:
+    for tm in candidate_tms:
+        if tm <= 0:
             continue
-
-        exp_weights = [e["weight"] for e in exp]
-        # Find 3 consecutive ascending sets matching these weights (±2kg tolerance)
-        for start in range(len(parsed) - 2):
-            candidates = parsed[start:start + 3]
-            if candidates[0]["hevy_type"] == "warmup":
+        for week_num in [1, 2, 3]:
+            exp = expected_weights(lift, week_num, tm_override=tm)
+            if not exp:
                 continue
-            score = 0
-            for cand, ew in zip(candidates, exp_weights):
-                if abs(cand["weight"] - ew) <= 2:
-                    score += 1
-            if score > best_score:
-                best_score = score
-                best_week = week_num
-                working_indices = set(p["idx"] for p in candidates)
 
-    # If no good match (score < 2), try looser matching
+            exp_weights = [e["weight"] for e in exp]
+            for start in range(len(parsed) - 2):
+                candidates = parsed[start:start + 3]
+                if candidates[0]["hevy_type"] == "warmup":
+                    continue
+                # Working sets must be strictly ascending weight
+                if not (candidates[0]["weight"] < candidates[1]["weight"] < candidates[2]["weight"]):
+                    continue
+
+                # Weight match score (0-3 points, ±2kg tolerance)
+                weight_score = 0
+                for cand, ew in zip(candidates, exp_weights):
+                    if abs(cand["weight"] - ew) <= 2:
+                        weight_score += 1
+
+                if weight_score < 2:
+                    continue  # not a plausible match
+
+                # Rep pattern bonus: the top set (AMRAP) should have more
+                # reps than a typical joker (1-5).  High reps = strong signal.
+                top_reps = candidates[2]["reps"]
+                if top_reps > 8:
+                    rep_bonus = 3  # clear AMRAP
+                elif top_reps > 5:
+                    rep_bonus = 1  # moderate
+                else:
+                    rep_bonus = 0  # could be joker misidentified as working
+
+                # Structural penalty: if heavier sets exist AFTER this
+                # triplet, the top set is probably NOT the real AMRAP —
+                # those heavier sets are jokers done above the working weight.
+                structural_penalty = 0
+                remaining = [p for p in parsed if p["idx"] > candidates[2]["idx"]]
+                heavier_after = [p for p in remaining if p["weight"] > candidates[2]["weight"]]
+                if heavier_after:
+                    # There are heavier sets after → this triplet's top set
+                    # is likely a mid-range set, not the true top working set.
+                    # BUT only penalize if the top set has low reps (real
+                    # AMRAPs can be followed by jokers, but the AMRAP will
+                    # have high reps).
+                    if top_reps <= 5:
+                        structural_penalty = -2
+
+                score = weight_score + rep_bonus + structural_penalty
+
+                if score > best_score:
+                    best_score = score
+                    best_week = week_num
+                    working_indices = set(p["idx"] for p in candidates)
+
     if best_score < 2:
-        # Fallback: look for 3 ascending normal-type sets in the middle range
         return _classify_main_lift_sets_fallback(parsed)
 
     # ── Step 2: Identify working set weights ──
