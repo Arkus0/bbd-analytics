@@ -343,6 +343,9 @@ def load_531_data():
         df = add_cycle_info(df)
     return df
 
+_bbd_error = None
+_531_error = None
+
 try:
     raw_df = load_raw_data()
     df = add_derived_columns(raw_df)
@@ -365,11 +368,11 @@ try:
         _prev_day = _d
     if _hevy_week:
         df["week"] = df["hevy_id"].map(_hevy_week).fillna(1).astype(int)
-
-    last_sync = pd.Timestamp.now(tz="Europe/Madrid")
 except Exception as e:
-    st.error(f"Error cargando datos: {e}")
-    st.stop()
+    _bbd_error = str(e)
+    df = pd.DataFrame()
+
+last_sync = pd.Timestamp.now(tz="Europe/Madrid")
 
 # ── Sidebar ──────────────────────────────────────────────────────────
 # Detect which program has the most recent session
@@ -377,7 +380,8 @@ _last_bbd = df["date"].max() if not df.empty else pd.Timestamp.min
 try:
     _df_531_check = load_531_data()
     _last_531 = _df_531_check["date"].max() if not _df_531_check.empty else pd.Timestamp.min
-except Exception:
+except Exception as e:
+    _531_error = str(e)
     _last_531 = pd.Timestamp.min
 _default_idx = 1 if _last_531 > _last_bbd else 0
 
@@ -451,6 +455,10 @@ with st.sidebar:
 # 💀 531 BBB DASHBOARD
 # ══════════════════════════════════════════════════════════════════════
 if is_531:
+    if _531_error:
+        st.error(f"❌ Error cargando datos 531: {_531_error}")
+        st.info("Puedes cambiar a BBD en el sidebar mientras se resuelve.")
+        st.stop()
     df_531 = load_531_data()
 
     # Planner works even with no data
@@ -1032,6 +1040,11 @@ if is_531:
 # ══════════════════════════════════════════════════════════════════════
 # 🔥 BBD DASHBOARD (existing code below — unchanged)
 # ══════════════════════════════════════════════════════════════════════
+
+if _bbd_error and not is_531:
+    st.error(f"❌ Error cargando datos BBD: {_bbd_error}")
+    st.info("Puedes cambiar a 531 BBB en el sidebar mientras se resuelve.")
+    st.stop()
 
 if df.empty:
     st.warning("No hay entrenamientos BBD registrados.")

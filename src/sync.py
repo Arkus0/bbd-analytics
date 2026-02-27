@@ -163,7 +163,29 @@ def run_531_sync(dry_run: bool = False) -> dict:
 
 if __name__ == "__main__":
     dry = "--dry-run" in sys.argv
-    # Run both syncs
-    bbd_result = run_sync(dry_run=dry)
-    bbb_result = run_531_sync(dry_run=dry)
+    bbd_result = {"synced": 0, "total": 0, "error": None}
+    bbb_result = {"synced": 0, "total": 0, "error": None}
+
+    # Run BBD sync (isolated)
+    try:
+        bbd_result = run_sync(dry_run=dry)
+    except Exception as e:
+        bbd_result["error"] = str(e)
+        print(f"\n❌ BBD sync FAILED: {e}")
+
+    # Run 531 sync (isolated — always runs even if BBD failed)
+    try:
+        bbb_result = run_531_sync(dry_run=dry)
+    except Exception as e:
+        bbb_result["error"] = str(e)
+        print(f"\n❌ 531 sync FAILED: {e}")
+
+    # Summary
     print(f"\nDone. BBD: {bbd_result['synced']} new. 531: {bbb_result['synced']} new.")
+    if bbd_result.get("error") or bbb_result.get("error"):
+        print("⚠️  Errors occurred:")
+        if bbd_result.get("error"):
+            print(f"  BBD: {bbd_result['error']}")
+        if bbb_result.get("error"):
+            print(f"  531: {bbb_result['error']}")
+        sys.exit(1)

@@ -2,6 +2,7 @@
 BBD Analytics — Hevy API Client
 """
 import re
+import time
 import requests
 import pandas as pd
 from datetime import datetime
@@ -10,12 +11,41 @@ from src.config import HEVY_API_KEY, DAY_CONFIG
 BASE_URL = "https://api.hevyapp.com/v1"
 HEADERS = {"accept": "application/json", "api-key": HEVY_API_KEY}
 
+# Rate limiting: Hevy API has undocumented limits
+RATE_LIMIT_DELAY = 0.35  # seconds between requests
+MAX_RETRIES = 3
+RETRY_BACKOFF = 2  # exponential backoff multiplier
+
 
 def _get(endpoint: str, params: dict = None) -> dict:
-    """GET request to Hevy API."""
-    r = requests.get(f"{BASE_URL}{endpoint}", headers=HEADERS, params=params or {})
-    r.raise_for_status()
-    return r.json()
+    """GET request to Hevy API with retry and rate limiting."""
+    time.sleep(RATE_LIMIT_DELAY)
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            r = requests.get(
+                f"{BASE_URL}{endpoint}", headers=HEADERS,
+                params=params or {}, timeout=15,
+            )
+            if r.status_code == 429:
+                wait = RETRY_BACKOFF ** attempt
+                print(f"  ⏳ Hevy rate limit, retrying in {wait}s (attempt {attempt}/{MAX_RETRIES})")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            return r.json()
+        except requests.exceptions.Timeout:
+            if attempt < MAX_RETRIES:
+                print(f"  ⏳ Hevy timeout, retrying (attempt {attempt}/{MAX_RETRIES})")
+                time.sleep(RETRY_BACKOFF ** attempt)
+            else:
+                raise
+        except requests.exceptions.HTTPError:
+            if attempt < MAX_RETRIES and r.status_code >= 500:
+                print(f"  ⏳ Hevy {r.status_code}, retrying (attempt {attempt}/{MAX_RETRIES})")
+                time.sleep(RETRY_BACKOFF ** attempt)
+            else:
+                raise
+    raise requests.exceptions.RetryError(f"Hevy API failed after {MAX_RETRIES} attempts")
 
 
 def is_bbd_workout(title: str) -> bool:

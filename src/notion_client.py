@@ -27,6 +27,7 @@ def _post(endpoint: str, body: dict) -> dict:
 
 
 def _patch(endpoint: str, body: dict) -> dict:
+    time.sleep(RATE_LIMIT_DELAY)
     r = requests.patch(f"{BASE_URL}{endpoint}", headers=HEADERS, json=body)
     r.raise_for_status()
     return r.json()
