@@ -298,37 +298,488 @@ def render_monthly_calendar(cal_data: dict):
         """, unsafe_allow_html=True)
 
 
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-    .stApp { font-family: 'Space Grotesk', sans-serif; }
-    code, .stCode { font-family: 'JetBrains Mono', monospace; }
-    div[data-testid="stMetric"] {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border: 1px solid #1e3a5f; border-radius: 12px; padding: 16px;
-    }
-    div[data-testid="stMetric"] label { color: #94a3b8 !important; font-size: 0.85rem; }
-    div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: #f1f5f9 !important; }
-    h1, h2, h3 { font-family: 'Space Grotesk', sans-serif !important; }
-    /* Mobile responsive */
-    @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
-        div[data-testid="stHorizontalBlock"] > div {
-            flex: 1 1 100% !important; min-width: 100% !important;
+_CSS_LOADED = False
+
+def _inject_base_css():
+    global _CSS_LOADED
+    if _CSS_LOADED:
+        return
+    _CSS_LOADED = True
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+        .stApp { font-family: 'Space Grotesk', sans-serif; }
+        code, .stCode { font-family: 'JetBrains Mono', monospace; }
+        div[data-testid="stMetric"] {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid #1e3a5f; border-radius: 12px; padding: 16px;
         }
-        .stApp h1 { font-size: 1.4rem !important; }
-        .stApp h2 { font-size: 1.2rem !important; }
-        .stApp h3 { font-size: 1.05rem !important; }
-        div[data-testid="stMetric"] { padding: 10px !important; }
-        iframe { max-height: 220px !important; }
-        div[data-testid="stExpander"] summary { font-size: 0.9rem !important; }
-    }
-</style>
-""", unsafe_allow_html=True)
+        div[data-testid="stMetric"] label { color: #94a3b8 !important; font-size: 0.85rem; }
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] { color: #f1f5f9 !important; }
+        h1, h2, h3 { font-family: 'Space Grotesk', sans-serif !important; }
+        @media (max-width: 768px) {
+            div[data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; }
+            div[data-testid="stHorizontalBlock"] > div {
+                flex: 1 1 100% !important; min-width: 100% !important;
+            }
+            .stApp h1 { font-size: 1.4rem !important; }
+            .stApp h2 { font-size: 1.2rem !important; }
+            .stApp h3 { font-size: 1.05rem !important; }
+            div[data-testid="stMetric"] { padding: 10px !important; }
+            iframe { max-height: 220px !important; }
+            div[data-testid="stExpander"] summary { font-size: 0.9rem !important; }
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+_531_CSS_LOADED = False
+
+def _inject_531_css():
+    """Inject Skull Forge aesthetic — brutalist/industrial identity for 531."""
+    global _531_CSS_LOADED
+    if _531_CSS_LOADED:
+        return
+    _531_CSS_LOADED = True
+    st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+        /* ── 531 SKULL FORGE IDENTITY ─────────────────────── */
+        h1, h2, h3 {
+            font-family: 'Oswald', sans-serif !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1.5px !important;
+        }
+
+        div[data-testid="stMetric"] {
+            background: linear-gradient(145deg, #1c1917 0%, #0c0a09 100%) !important;
+            border: 1px solid #44403c !important;
+            border-top: 3px solid #dc2626 !important;
+            border-radius: 2px !important;
+            padding: 18px !important;
+        }
+        div[data-testid="stMetric"] label {
+            font-family: 'Oswald', sans-serif !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1px !important;
+            color: #a8a29e !important;
+            font-size: 0.78rem !important;
+        }
+        div[data-testid="stMetric"] [data-testid="stMetricValue"] {
+            font-family: 'IBM Plex Mono', monospace !important;
+            color: #fafaf9 !important;
+        }
+        div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+            font-family: 'IBM Plex Mono', monospace !important;
+        }
+
+        .stTabs [data-baseweb="tab-list"] { gap: 0 !important; }
+        .stTabs [data-baseweb="tab"] {
+            font-family: 'Oswald', sans-serif !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1px !important;
+            font-size: 0.85rem !important;
+        }
+        .stTabs [aria-selected="true"] {
+            border-bottom-color: #dc2626 !important;
+        }
+
+        div[data-testid="stExpander"] summary {
+            font-family: 'Oswald', sans-serif !important;
+            letter-spacing: 0.5px !important;
+        }
+
+        /* ── Skull Forge components ─────────────────────── */
+        .sf-header {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #fafaf9;
+            font-size: 1.6rem;
+            font-weight: 700;
+            border-bottom: 3px solid #dc2626;
+            padding-bottom: 10px;
+            margin: 0 0 20px 0;
+        }
+        .sf-subheader {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: #e7e5e4;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin: 20px 0 12px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sf-caption {
+            font-family: 'IBM Plex Mono', monospace;
+            color: #78716c;
+            font-size: 0.78rem;
+            margin-top: 4px;
+        }
+        .sf-card {
+            background: linear-gradient(145deg, #1c1917 0%, #0c0a09 100%);
+            border: 1px solid #44403c;
+            border-left: 4px solid #dc2626;
+            padding: 16px 20px;
+            margin: 8px 0;
+            border-radius: 2px;
+        }
+        .sf-card-muted {
+            background: #1c1917;
+            border: 1px solid #292524;
+            border-left: 4px solid #44403c;
+            padding: 16px 20px;
+            margin: 8px 0;
+            border-radius: 2px;
+        }
+
+        /* ── Set rows (planner) ─────────────────────── */
+        .sf-set {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            padding: 10px 16px;
+            margin: 3px 0;
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.88rem;
+            color: #e7e5e4;
+            background: #1c1917;
+            border-left: 3px solid #44403c;
+            transition: background 0.15s;
+        }
+        .sf-set:hover { background: #292524; }
+        .sf-set.amrap {
+            border-left: 3px solid #dc2626;
+            background: linear-gradient(90deg, #1c1917 0%, #201210 100%);
+        }
+        .sf-set.warmup { border-left: 3px solid #64748b; opacity: 0.85; }
+        .sf-set.bbb { border-left: 3px solid #3b82f6; }
+        .sf-set.fsl { border-left: 3px solid #8b5cf6; }
+        .sf-set .w { font-weight: 600; color: #fafaf9; min-width: 80px; }
+        .sf-set .r { color: #a8a29e; min-width: 60px; }
+        .sf-set .p { color: #78716c; font-size: 0.78rem; min-width: 40px; }
+        .sf-set .plates { color: #fbbf24; font-size: 0.78rem; }
+        .sf-tag {
+            display: inline-block;
+            padding: 2px 10px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            border-radius: 1px;
+        }
+        .sf-tag.amrap { background: #dc2626; color: #fff; }
+        .sf-tag.bbb { background: #1e40af; color: #93c5fd; }
+        .sf-tag.fsl { background: #5b21b6; color: #c4b5fd; }
+        .sf-tag.joker { background: #b45309; color: #fde68a; }
+        .sf-tag.ok { background: #166534; color: #86efac; }
+        .sf-tag.warn { background: #92400e; color: #fde68a; }
+        .sf-tag.fail { background: #991b1b; color: #fca5a5; }
+
+        /* ── Week overview grid ─────────────────────── */
+        .sf-week-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin: 12px 0;
+        }
+        @media (max-width: 768px) {
+            .sf-week-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .sf-week-card {
+            background: #1c1917;
+            border: 1px solid #44403c;
+            padding: 14px;
+            border-radius: 2px;
+            min-height: 150px;
+        }
+        .sf-week-card.active {
+            border: 2px solid #dc2626;
+            box-shadow: 0 0 24px rgba(220,38,38,0.12);
+        }
+        .sf-week-card .name {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            color: #fafaf9;
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+        }
+        .sf-week-card .line {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.78rem;
+            color: #a8a29e;
+            margin: 2px 0;
+        }
+        .sf-week-card .line.amrap-l { color: #dc2626; font-weight: 600; }
+        .sf-week-card .bbb-line {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            color: #64748b;
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px solid #292524;
+        }
+
+        /* ── AMRAP cards ─────────────────────── */
+        .sf-amrap-row {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px 16px;
+            margin: 5px 0;
+            background: #1c1917;
+            border-radius: 2px;
+            border-left: 4px solid #44403c;
+        }
+        .sf-amrap-row.green { border-left-color: #22c55e; }
+        .sf-amrap-row.yellow { border-left-color: #fbbf24; }
+        .sf-amrap-row.red { border-left-color: #ef4444; }
+        .sf-amrap-row .dot {
+            width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+        }
+        .sf-amrap-row .dot.green { background: #22c55e; }
+        .sf-amrap-row .dot.yellow { background: #fbbf24; }
+        .sf-amrap-row .dot.red { background: #ef4444; }
+        .sf-amrap-row .lift {
+            font-family: 'Oswald', sans-serif;
+            font-weight: 600;
+            color: #fafaf9;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            min-width: 90px;
+        }
+        .sf-amrap-row .stats {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: #a8a29e;
+        }
+        .sf-amrap-row .e1rm {
+            font-family: 'IBM Plex Mono', monospace;
+            font-weight: 600;
+            color: #fafaf9;
+            margin-left: auto;
+        }
+
+        /* ── Strength bar ─────────────────────── */
+        .sf-bar-track {
+            background: #292524;
+            height: 8px;
+            border-radius: 1px;
+            overflow: hidden;
+            margin: 6px 0 4px 0;
+        }
+        .sf-bar-fill {
+            height: 100%;
+            border-radius: 1px;
+            transition: width 0.4s ease;
+        }
+        .sf-bar-label {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.72rem;
+            color: #78716c;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* ── Intelligence cards ─────────────────────── */
+        .sf-intel-card {
+            background: linear-gradient(145deg, #1c1917 0%, #0c0a09 100%);
+            border: 1px solid #44403c;
+            padding: 20px;
+            margin: 8px 0;
+            border-radius: 2px;
+        }
+        .sf-intel-card .title {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #fafaf9;
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        .sf-intel-card .verdict {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: #a8a29e;
+            line-height: 1.5;
+        }
+
+        /* ── Health gauge ─────────────────────── */
+        .sf-gauge {
+            text-align: center;
+            padding: 20px;
+            margin: 12px 0;
+        }
+        .sf-gauge .pct {
+            font-family: 'Oswald', sans-serif;
+            font-size: 3rem;
+            font-weight: 700;
+            letter-spacing: 2px;
+            line-height: 1;
+        }
+        .sf-gauge .pct.good { color: #22c55e; }
+        .sf-gauge .pct.mid { color: #fbbf24; }
+        .sf-gauge .pct.bad { color: #ef4444; }
+        .sf-gauge .label {
+            font-family: 'Oswald', sans-serif;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #78716c;
+            font-size: 0.75rem;
+            margin-top: 4px;
+        }
+
+        /* ── Context bar (cycle/week info) ─────────────────────── */
+        .sf-context {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin: 8px 0 16px 0;
+        }
+        .sf-ctx-chip {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            background: #292524;
+            border: 1px solid #44403c;
+            color: #a8a29e;
+            border-radius: 1px;
+        }
+        .sf-ctx-chip.accent {
+            border-color: #dc2626;
+            color: #fafaf9;
+        }
+
+        /* ── Override dataframe styling ─────────────────────── */
+        .stDataFrame {
+            font-family: 'IBM Plex Mono', monospace !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+# ── 531 HTML Rendering Helpers ────────────────────────────────────────
+
+def _sf_header(text: str, emoji: str = "💀"):
+    """Render a Skull Forge section header."""
+    st.markdown(f'<div class="sf-header">{emoji} {text}</div>', unsafe_allow_html=True)
+
+
+def _sf_sub(text: str, emoji: str = ""):
+    """Render a Skull Forge sub-header."""
+    st.markdown(f'<div class="sf-subheader">{emoji} {text}</div>', unsafe_allow_html=True)
+
+
+def _sf_metrics_row(metrics: list[dict]):
+    """Render a row of Skull Forge metric cards.
+    Each dict: {label, value, delta?, icon?}
+    """
+    n = len(metrics)
+    cols = st.columns(n)
+    for i, m in enumerate(metrics):
+        with cols[i]:
+            delta = m.get("delta")
+            icon = m.get("icon", "")
+            label = f"{icon} {m['label']}" if icon else m["label"]
+            if delta is not None:
+                st.metric(label, m["value"], delta=delta)
+            else:
+                st.metric(label, m["value"])
+
+
+def _sf_set_html(weight, reps, pct, plates_str, css_class="", tag=""):
+    """Return HTML for a single set row."""
+    pct_display = int(pct * 100) if isinstance(pct, float) and pct < 10 else int(pct)
+    tag_html = f'<span class="sf-tag {tag.lower()}">{tag}</span>' if tag else ""
+    return (
+        f'<div class="sf-set {css_class}">'
+        f'  <span class="w">{weight:g} kg</span>'
+        f'  <span class="r">× {reps}</span>'
+        f'  <span class="p">{pct_display}%</span>'
+        f'  <span class="plates">🔩 {plates_str}</span>'
+        f'  {tag_html}'
+        f'</div>'
+    )
+
+
+def _sf_week_card_html(dp, is_next=False):
+    """Return HTML for a week-overview card."""
+    active = "active" if is_next else ""
+    lines = ""
+    if dp.get("tm"):
+        for s in dp.get("sets", []):
+            pct_d = int(s["pct"] * 100)
+            cls = "amrap-l" if s["is_amrap"] else ""
+            prefix = "🔴 " if s["is_amrap"] else ""
+            lines += f'<div class="line {cls}">{prefix}{s["weight"]:g}kg × {s["reps"]} ({pct_d}%)</div>'
+        bbb_w = dp.get("bbb_weight", "?")
+        lines += f'<div class="bbb-line">BBB: {bbb_w}kg 5×10</div>'
+    else:
+        lines = '<div class="line">TM pendiente</div>'
+
+    pointer = " ← 👈" if is_next else ""
+    return (
+        f'<div class="sf-week-card {active}">'
+        f'  <div class="name">{dp["lift_label"]}{pointer}</div>'
+        f'  {lines}'
+        f'</div>'
+    )
+
+
+def _sf_amrap_status_html(lift_label, weight, reps, min_reps, over, e1rm):
+    """Return HTML for an AMRAP status row."""
+    if over >= 3:
+        cls, dot = "green", "green"
+    elif over >= 0:
+        cls, dot = "yellow", "yellow"
+    else:
+        cls, dot = "red", "red"
+    return (
+        f'<div class="sf-amrap-row {cls}">'
+        f'  <span class="dot {dot}"></span>'
+        f'  <span class="lift">{lift_label}</span>'
+        f'  <span class="stats">{weight}kg × <b>{reps}</b> (mín: {min_reps}, +{over})</span>'
+        f'  <span class="e1rm">e1RM: {e1rm}kg</span>'
+        f'</div>'
+    )
+
+
+def _sf_progress_bar(current, target, prev=0, color="#dc2626", label_left="", label_right=""):
+    """Return HTML for a custom progress bar."""
+    progress = (current - prev) / (target - prev) if target > prev else 1.0
+    progress = max(0, min(progress, 1.0))
+    pct = progress * 100
+    return (
+        f'<div class="sf-bar-track">'
+        f'  <div class="sf-bar-fill" style="width:{pct:.0f}%; background:{color};"></div>'
+        f'</div>'
+        f'<div class="sf-bar-label">'
+        f'  <span>{label_left}</span>'
+        f'  <span>{label_right}</span>'
+        f'</div>'
+    )
 
 PL = dict(
     template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="Space Grotesk", color="#e2e8f0"), margin=dict(l=40, r=20, t=40, b=40),
+)
+
+PL_531 = dict(
+    template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="Oswald, sans-serif", color="#e7e5e4", size=13),
+    margin=dict(l=40, r=20, t=50, b=40),
+    title_font=dict(family="Oswald, sans-serif", size=16, color="#fafaf9"),
+    legend=dict(font=dict(family="IBM Plex Mono, monospace", size=11)),
+    colorway=["#dc2626", "#3b82f6", "#fbbf24", "#22c55e", "#8b5cf6", "#ec4899", "#f97316"],
 )
 
 # ── Data Loading ─────────────────────────────────────────────────────
@@ -378,7 +829,13 @@ with st.sidebar:
     program = st.selectbox("Programa", ["🔥 BBD", "💀 531 BBB"], index=_default_idx, label_visibility="collapsed")
     is_531 = program == "💀 531 BBB"
     if is_531:
-        st.caption(f"Wendler's 531 Boring But Big — desde {pd.Timestamp(PROGRAM_START_531).strftime('%d %b %Y')}")
+        st.markdown(
+            f'<div style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+            f'letter-spacing:1px;color:#78716c;font-size:0.75rem;">'
+            f'Wendler\'s 531 Boring But Big<br>'
+            f'desde {pd.Timestamp(PROGRAM_START_531).strftime("%d %b %Y")}</div>',
+            unsafe_allow_html=True,
+        )
     else:
         st.caption(f"Backed by Deadlifts — desde {pd.Timestamp(PROGRAM_START).strftime('%d %b %Y')}")
     st.divider()
@@ -450,6 +907,7 @@ with st.sidebar:
 # 💀 531 BBB DASHBOARD
 # ══════════════════════════════════════════════════════════════════════
 if is_531:
+    _inject_531_css()
     if _531_error:
         st.error(f"❌ Error cargando datos 531: {_531_error}")
         st.info("Puedes cambiar a BBD en el sidebar mientras se resuelve.")
@@ -460,80 +918,64 @@ if is_531:
     if page == "📋 Hoy te toca":
         plan = next_session_plan(df_531)
 
-        # Header with cycle/week context
-        st.markdown(f"## 📋 Hoy te toca — {plan['lift_label']}")
-        st.markdown(
-            f"**Ciclo {plan['cycle_num']}** · **{plan['week_name']}** · "
-            f"Día {plan['day_num']}: {plan['focus']}"
+        # ── Header ──
+        _sf_header(f"Hoy te toca — {plan['lift_label']}", "📋")
+
+        # ── Context chips ──
+        chips_html = (
+            f'<div class="sf-context">'
+            f'  <span class="sf-ctx-chip accent">Ciclo {plan["cycle_num"]}</span>'
+            f'  <span class="sf-ctx-chip accent">{plan["week_name"]}</span>'
+            f'  <span class="sf-ctx-chip">Día {plan["day_num"]}</span>'
+            f'  <span class="sf-ctx-chip">{plan["focus"]}</span>'
+            f'</div>'
         )
+        st.markdown(chips_html, unsafe_allow_html=True)
 
         if plan["tm"] is None:
             st.warning(f"⚠️ Training Max de {plan['lift_label']} no configurado. Dime tu TM y lo actualizo.")
         else:
-            st.caption(f"TM: {plan['tm']} kg")
-            st.divider()
+            st.markdown(
+                f'<div class="sf-caption">Training Max: <b style="color:#fafaf9">{plan["tm"]} kg</b></div>',
+                unsafe_allow_html=True,
+            )
 
             # ── Warmup ──
-            st.markdown("### 🔥 Calentamiento")
+            _sf_sub("Calentamiento", "🔥")
+            warmup_html = ""
             for s in plan["warmup"]:
-                pct_display = int(s["pct"] * 100)
-                st.markdown(
-                    f"&nbsp;&nbsp;&nbsp;&nbsp;`{s['weight']:g} kg` × {s['reps']} &nbsp;&nbsp;"
-                    f"({pct_display}%) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{s['plates_str']}**"
-                )
+                warmup_html += _sf_set_html(s["weight"], s["reps"], s["pct"], s["plates_str"], css_class="warmup")
+            st.markdown(warmup_html, unsafe_allow_html=True)
 
-            st.divider()
-
-            # ── Working sets (the main event) ──
-            st.markdown("### 💀 Series de trabajo")
+            # ── Working sets ──
+            _sf_sub("Series de trabajo", "💀")
+            working_html = ""
             for s in plan["working_sets"]:
-                pct_display = int(s["pct"] * 100)
-                reps_display = s["reps"]
-                if s["is_amrap"]:
-                    st.markdown(
-                        f"&nbsp;&nbsp;&nbsp;&nbsp;🔴 `{s['weight']:g} kg` × **{reps_display}** &nbsp;&nbsp;"
-                        f"({pct_display}%) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{s['plates_str']}** &nbsp;&nbsp;⚡ **AMRAP**"
-                    )
-                else:
-                    st.markdown(
-                        f"&nbsp;&nbsp;&nbsp;&nbsp;⚪ `{s['weight']:g} kg` × {reps_display} &nbsp;&nbsp;"
-                        f"({pct_display}%) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{s['plates_str']}**"
-                    )
+                tag = "AMRAP" if s["is_amrap"] else ""
+                cls = "amrap" if s["is_amrap"] else ""
+                working_html += _sf_set_html(s["weight"], s["reps"], s["pct"], s["plates_str"], css_class=cls, tag=tag)
+            st.markdown(working_html, unsafe_allow_html=True)
 
-            st.divider()
-
-            # ── BBB ──
+            # ── BBB Supplemental ──
             bbb = plan["bbb"]
             if bbb:
+                _sf_sub("BBB Supplemental", "📦")
                 pct_display = int(bbb["pct_tm"] * 100)
-                st.markdown("### 📦 BBB Supplemental")
-                st.markdown(
-                    f"&nbsp;&nbsp;&nbsp;&nbsp;`{bbb['weight']:g} kg` × {bbb['reps']} × {bbb['sets']} sets &nbsp;&nbsp;"
-                    f"({pct_display}% TM) &nbsp;&nbsp;→ &nbsp;&nbsp;🔩 **{bbb['plates_str']}**"
+                bbb_html = _sf_set_html(
+                    bbb["weight"], f'{bbb["reps"]} × {bbb["sets"]} sets',
+                    pct_display, bbb["plates_str"], css_class="bbb", tag="BBB"
                 )
+                st.markdown(bbb_html, unsafe_allow_html=True)
 
-            st.divider()
-
-            # ── Full week overview ──
-            st.markdown("### 📅 Esta semana completa")
+            # ── Full week overview (HTML grid) ──
+            _sf_sub("Esta semana completa", "📅")
             week_plans = full_week_plan(df_531)
-            cols = st.columns(4)
-            for i, dp in enumerate(week_plans):
-                with cols[i]:
-                    is_next = (dp["day_num"] == plan["day_num"])
-                    marker = " ← 👈" if is_next else ""
-                    st.markdown(f"**{dp['lift_label']}**{marker}")
-                    if dp["tm"]:
-                        for s in dp["sets"]:
-                            pct_d = int(s["pct"] * 100)
-                            reps_d = s["reps"]
-                            if s["is_amrap"]:
-                                st.markdown(f"🔴 {s['weight']:g}kg × {reps_d}")
-                            else:
-                                st.caption(f"{s['weight']:g}kg × {reps_d} ({pct_d}%)")
-                        st.caption(f"BBB: {dp.get('bbb_weight', '?')}kg 5×10")
-                    else:
-                        st.caption("TM pendiente")
+            grid_html = '<div class="sf-week-grid">'
+            for dp in week_plans:
+                is_next = (dp["day_num"] == plan["day_num"])
+                grid_html += _sf_week_card_html(dp, is_next=is_next)
+            grid_html += '</div>'
+            st.markdown(grid_html, unsafe_allow_html=True)
 
         st.stop()
 
@@ -545,166 +987,220 @@ if is_531:
     summary_531 = global_summary_531(df_531)
 
     if page == "📊 Dashboard":
-        st.markdown("## 💀 531 BBB — Dashboard")
+        _sf_header("531 BBB — Dashboard", "💀")
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Sesiones", summary_531.get("total_sessions", 0))
-        c2.metric("Volumen Total", f"{summary_531.get('total_volume_kg', 0):,} kg")
-        c3.metric("Sets Totales", summary_531.get("total_sets", 0))
-        c4.metric("AMRAPs", summary_531.get("amrap_count", 0))
+        c1.metric("💀 Sesiones", summary_531.get("total_sessions", 0))
+        c2.metric("⚖️ Volumen", f"{summary_531.get('total_volume_kg', 0):,} kg")
+        c3.metric("📊 Sets", summary_531.get("total_sets", 0))
+        c4.metric("🎯 AMRAPs", summary_531.get("amrap_count", 0))
 
-        st.divider()
-
-        # Training Maxes
-        st.markdown("### 🎯 Training Maxes")
-        tm_cols = st.columns(4)
+        # ── Training Maxes as styled cards ──
+        _sf_sub("Training Maxes", "🎯")
         lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
         lift_emojis = {"ohp": "🏋️", "deadlift": "💀", "bench": "🪑", "squat": "🦵"}
+        lift_colors = {"ohp": "#f59e0b", "deadlift": "#dc2626", "bench": "#3b82f6", "squat": "#22c55e"}
+
+        tm_cols = st.columns(4)
         for i, (lift, label) in enumerate(lift_labels.items()):
             tm = TRAINING_MAX.get(lift)
-            if tm:
-                tm_cols[i].metric(f"{lift_emojis[lift]} {label}", f"{tm} kg")
-            else:
-                tm_cols[i].metric(f"{lift_emojis[lift]} {label}", "TBD")
+            with tm_cols[i]:
+                if tm:
+                    st.metric(f"{lift_emojis[lift]} {label}", f"{tm} kg")
+                else:
+                    st.metric(f"{lift_emojis[lift]} {label}", "TBD")
 
-        st.divider()
-
-        # AMRAP summary — latest per lift only
+        # ── AMRAP summary — styled cards ──
         amraps = amrap_tracking(df_531)
         if not amraps.empty:
             amraps = amraps.sort_values("date").groupby("lift").tail(1)
-            st.markdown("### 🎯 Últimos AMRAPs")
+            _sf_sub("Últimos AMRAPs", "🎯")
+            amrap_html = ""
             for _, row in amraps.iterrows():
                 lift_label = lift_labels.get(row["lift"], row["lift"])
                 over = row["reps_over_min"]
-                emoji = "🟢" if over >= 3 else "🟡" if over >= 0 else "🔴"
-                st.markdown(
-                    f"{emoji} **{lift_label}** — {row['weight_kg']}kg × **{row['reps']}** reps "
-                    f"(mín: {row['min_reps']}, +{over}) → e1RM: **{row['e1rm']}kg**"
+                amrap_html += _sf_amrap_status_html(
+                    lift_label, row["weight_kg"], row["reps"],
+                    row["min_reps"], over, row["e1rm"]
                 )
+            st.markdown(amrap_html, unsafe_allow_html=True)
 
-        st.divider()
-
-        # BBB compliance — latest per lift only
+        # ── BBB compliance — styled cards ──
         bbb = bbb_compliance(df_531)
         if not bbb.empty:
             bbb = bbb.sort_values("date").groupby("lift").tail(1)
-            st.markdown("### 📦 BBB Supplemental")
+            _sf_sub("BBB Supplemental", "📦")
+            bbb_html = ""
             for _, row in bbb.iterrows():
                 lift_label = lift_labels.get(row["lift"], str(row["lift"]))
-                status = "✅" if row["sets_ok"] and row["reps_ok"] else "⚠️"
+                ok = row["sets_ok"] and row["reps_ok"]
+                tag_cls = "ok" if ok else "warn"
+                tag_text = "OK" if ok else "⚠️"
                 pct = f" ({row['pct_of_tm']}% TM)" if row["pct_of_tm"] else ""
-                st.markdown(
-                    f"{status} **{lift_label}** — {row['weight_kg']}kg{pct} | "
-                    f"{row['n_sets']} sets × {row['avg_reps']} reps avg (total: {row['total_reps']})"
+                bbb_html += (
+                    f'<div class="sf-card{"" if ok else "-muted"}">'
+                    f'  <span style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#fafaf9;font-weight:600;">{lift_label}</span>'
+                    f'  <span class="sf-tag {tag_cls}">{tag_text}</span>'
+                    f'  <div style="font-family:IBM Plex Mono,monospace;font-size:0.85rem;'
+                    f'color:#a8a29e;margin-top:6px;">'
+                    f'    {row["weight_kg"]}kg{pct} · {row["n_sets"]} sets × {row["avg_reps"]} reps avg '
+                    f'    (total: {row["total_reps"]})'
+                    f'  </div>'
+                    f'</div>'
                 )
+            st.markdown(bbb_html, unsafe_allow_html=True)
 
-        # FSL compliance — latest per lift only
+        # ── FSL compliance ──
         fsl = fsl_compliance(df_531)
         if not fsl.empty:
             fsl = fsl.sort_values("date").groupby("lift").tail(1)
-            st.markdown("### 🔁 FSL (First Set Last)")
-            st.caption("Suplementario con el peso del primer working set — 3-5 sets × 5-8 reps.")
+            _sf_sub("FSL (First Set Last)", "🔁")
+            fsl_html = ""
             for _, row in fsl.iterrows():
                 lift_label = lift_labels.get(row["lift"], str(row["lift"]))
-                status = "✅" if row["sets_ok"] and row["reps_ok"] else "⚠️"
+                ok = row["sets_ok"] and row["reps_ok"]
+                tag_cls = "ok" if ok else "warn"
+                tag_text = "OK" if ok else "⚠️"
                 pct = f" ({row['pct_of_tm']}% TM)" if row["pct_of_tm"] else ""
-                st.markdown(
-                    f"{status} **{lift_label}** — {row['weight_kg']}kg{pct} | "
-                    f"{row['n_sets']} sets × {row['avg_reps']} reps avg"
+                fsl_html += (
+                    f'<div class="sf-card-muted">'
+                    f'  <span style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#fafaf9;font-weight:600;">{lift_label}</span>'
+                    f'  <span class="sf-tag {tag_cls}">{tag_text}</span>'
+                    f'  <div style="font-family:IBM Plex Mono,monospace;font-size:0.85rem;'
+                    f'color:#a8a29e;margin-top:6px;">'
+                    f'    {row["weight_kg"]}kg{pct} · {row["n_sets"]} sets × {row["avg_reps"]} reps avg'
+                    f'  </div>'
+                    f'</div>'
                 )
+            st.markdown(fsl_html, unsafe_allow_html=True)
 
-        # Joker sets — latest per lift only
+        # ── Joker sets ──
         jokers = joker_sets_summary(df_531)
         if not jokers.empty:
             jokers = jokers.sort_values("date").groupby("lift").tail(1)
-            st.divider()
-            st.markdown("### 🃏 Joker Sets")
-            st.caption("Sets pesados extra post-AMRAP — singles/doubles/triples por encima del top set.")
+            _sf_sub("Joker Sets", "🃏")
             jk_cols = st.columns(2)
             jk_cols[0].metric("Total Joker Sets", int(jokers["total_sets"].sum()))
             jk_cols[1].metric("Mejor e1RM (Joker)", f"{jokers['best_e1rm'].max():.1f} kg")
+            joker_html = ""
             for _, jrow in jokers.iterrows():
                 lift_label = lift_labels.get(jrow["lift"], str(jrow["lift"]))
-                st.markdown(
-                    f"🃏 **{lift_label}** — {jrow['date'].strftime('%d %b')} — "
-                    f"{jrow['weight_kg']}kg × {jrow['best_reps']} ({jrow['total_sets']} sets) → "
-                    f"e1RM: **{jrow['best_e1rm']:.1f}kg**"
+                joker_html += (
+                    f'<div class="sf-card-muted" style="border-left-color:#f59e0b;">'
+                    f'  <span style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#fafaf9;font-weight:600;">{lift_label}</span>'
+                    f'  <span class="sf-tag joker">JOKER</span>'
+                    f'  <div style="font-family:IBM Plex Mono,monospace;font-size:0.85rem;'
+                    f'color:#a8a29e;margin-top:6px;">'
+                    f'    {jrow["date"].strftime("%d %b")} · '
+                    f'    {jrow["weight_kg"]}kg × {jrow["best_reps"]} ({jrow["total_sets"]} sets) → '
+                    f'    e1RM: <b style="color:#fafaf9">{jrow["best_e1rm"]:.1f}kg</b>'
+                    f'  </div>'
+                    f'</div>'
                 )
+            st.markdown(joker_html, unsafe_allow_html=True)
 
-        # Accessory summary
+        # ── Accessory summary ──
         acc = accessory_summary(df_531)
         if not acc.empty:
-            st.markdown("### 🔧 Accesorios")
+            _sf_sub("Accesorios", "🔧")
+            acc_html = ""
             for _, row in acc.iterrows():
-                st.markdown(
-                    f"**{row['muscle_group']}** — {row['total_sets']} sets, "
-                    f"{row['total_reps']} reps, {row['total_volume']:,.0f} kg"
+                acc_html += (
+                    f'<div class="sf-card-muted" style="border-left-color:#22c55e;">'
+                    f'  <span style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#fafaf9;font-weight:600;">{row["muscle_group"]}</span>'
+                    f'  <div style="font-family:IBM Plex Mono,monospace;font-size:0.85rem;'
+                    f'color:#a8a29e;margin-top:4px;">'
+                    f'    {row["total_sets"]} sets · {row["total_reps"]} reps · {row["total_volume"]:,.0f} kg'
+                    f'  </div>'
+                    f'</div>'
                 )
+            st.markdown(acc_html, unsafe_allow_html=True)
 
     elif page == "🎯 AMRAP Tracker":
-        st.markdown("## 🎯 AMRAP Tracker")
-        st.caption("La serie AMRAP es el pulso de tu progresión en 531.")
+        _sf_header("AMRAP Tracker", "🎯")
+        st.markdown(
+            '<div class="sf-caption">La serie AMRAP es el pulso de tu progresión en 531.</div>',
+            unsafe_allow_html=True,
+        )
 
-        # TM Validation alerts
+        # TM Validation alerts — styled cards
         tm_val = validate_tm(df_531)
         if tm_val:
+            _sf_sub("Estado del Training Max", "⚙️")
             for lift, info in tm_val.items():
                 lift_label = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}.get(lift, lift)
                 if info["status"] == "too_light":
-                    st.warning(
-                        f"⚠️ **{lift_label}**: TM parece bajo — promedio +{info['avg_reps_over_min']} reps sobre mínimo. "
-                        f"TM actual: {info['current_tm']}kg → Recomendado: **{info['recommended_tm']}kg** "
-                        f"(+{info['tm_delta']}kg)"
+                    tag_cls, tag_text = "warn", "⬆️ SUBIR"
+                    detail = (
+                        f'TM parece bajo — promedio +{info["avg_reps_over_min"]} reps sobre mínimo. '
+                        f'TM actual: {info["current_tm"]}kg → Recomendado: <b>{info["recommended_tm"]}kg</b> '
+                        f'(+{info["tm_delta"]}kg)'
                     )
                 elif info["status"] == "too_heavy":
-                    st.error(
-                        f"🔴 **{lift_label}**: TM parece alto — promedio {info['avg_reps_over_min']} reps sobre mínimo. "
-                        f"TM actual: {info['current_tm']}kg → Recomendado: **{info['recommended_tm']}kg** "
-                        f"({info['tm_delta']}kg)"
+                    tag_cls, tag_text = "fail", "⬇️ BAJAR"
+                    detail = (
+                        f'TM parece alto — promedio {info["avg_reps_over_min"]} reps sobre mínimo. '
+                        f'TM actual: {info["current_tm"]}kg → Recomendado: <b>{info["recommended_tm"]}kg</b> '
+                        f'({info["tm_delta"]}kg)'
                     )
                 else:
-                    st.success(
-                        f"✅ **{lift_label}**: TM calibrado — +{info['avg_reps_over_min']} reps/AMRAP. "
-                        f"e1RM: {info['latest_e1rm']}kg, TM: {info['current_tm']}kg"
+                    tag_cls, tag_text = "ok", "✅ OK"
+                    detail = (
+                        f'TM calibrado — +{info["avg_reps_over_min"]} reps/AMRAP. '
+                        f'e1RM: {info["latest_e1rm"]}kg, TM: {info["current_tm"]}kg'
                     )
-            st.divider()
+                border_color = {"ok": "#22c55e", "warn": "#fbbf24", "fail": "#ef4444"}[tag_cls]
+                st.markdown(
+                    f'<div class="sf-card" style="border-left-color:{border_color};">'
+                    f'  <span style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#fafaf9;font-weight:600;">{lift_label}</span>'
+                    f'  <span class="sf-tag {tag_cls}">{tag_text}</span>'
+                    f'  <div style="font-family:IBM Plex Mono,monospace;font-size:0.82rem;'
+                    f'color:#a8a29e;margin-top:8px;line-height:1.5;">{detail}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
         amraps = amrap_tracking(df_531)
         if amraps.empty:
             st.info("Sin datos de AMRAP aún.")
         else:
-            # AMRAP table
-            display = amraps.copy()
-            display["lift"] = display["lift"].map(
-                {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
-            )
-            display.columns = ["Fecha", "Lift", "Peso (kg)", "Reps", "e1RM",
-                               "Mín Reps", "+Sobre Mín", "% TM"]
-            st.dataframe(display, use_container_width=True, hide_index=True)
+            # AMRAP history as styled rows
+            _sf_sub("Historial AMRAP", "📋")
+            lift_labels_map = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
+            for _, row in amraps.sort_values("date", ascending=False).iterrows():
+                ll = lift_labels_map.get(row["lift"], row["lift"])
+                amrap_row = _sf_amrap_status_html(
+                    f'{row["date"].strftime("%d/%m")} · {ll}',
+                    row["weight_kg"], row["reps"], row["min_reps"],
+                    row["reps_over_min"], row["e1rm"]
+                )
+                st.markdown(amrap_row, unsafe_allow_html=True)
 
-            # AMRAP e1RM chart
-            st.markdown("### 📈 e1RM desde AMRAPs")
+            # AMRAP e1RM chart with 531 plotly theme
+            _sf_sub("e1RM desde AMRAPs", "📈")
             prog = lift_progression(df_531)
             if not prog.empty:
                 prog_display = prog.copy()
-                prog_display["lift"] = prog_display["lift"].map(
-                    {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
-                )
+                prog_display["lift"] = prog_display["lift"].map(lift_labels_map)
                 fig = px.line(
                     prog_display, x="date", y="e1rm", color="lift",
-                    markers=True, title="e1RM por lift (AMRAP)",
+                    markers=True,
                     labels={"date": "", "e1rm": "e1RM (kg)", "lift": ""},
                 )
-                fig.update_layout(**PL)
+                fig.update_layout(**PL_531, height=380)
+                fig.update_traces(line=dict(width=2.5), marker=dict(size=8))
                 st.plotly_chart(fig, use_container_width=True)
 
-        # Supplemental compliance section (BBB or FSL)
-        st.divider()
+        # Supplemental compliance section
         bbb = bbb_compliance(df_531)
         fsl = fsl_compliance(df_531)
         if not bbb.empty:
-            st.markdown("### 📦 BBB Supplemental Compliance")
+            _sf_sub("BBB Supplemental Compliance", "📦")
             bbb_display = bbb[["date", "lift", "weight_kg", "n_sets", "total_reps", "avg_reps", "pct_of_tm"]].copy()
             bbb_display["lift"] = bbb_display["lift"].map(
                 {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
@@ -712,7 +1208,7 @@ if is_531:
             bbb_display.columns = ["Fecha", "Lift", "Peso (kg)", "Sets", "Total Reps", "Avg Reps", "% TM"]
             st.dataframe(bbb_display, use_container_width=True, hide_index=True)
         if not fsl.empty:
-            st.markdown("### 🔁 FSL Compliance")
+            _sf_sub("FSL Compliance", "🔁")
             fsl_display = fsl[["date", "lift", "weight_kg", "n_sets", "total_reps", "avg_reps", "pct_of_tm"]].copy()
             fsl_display["lift"] = fsl_display["lift"].map(
                 {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
@@ -723,10 +1219,10 @@ if is_531:
             st.info("Sin datos de suplementario aún.")
 
     elif page == "📈 Progresión":
-        st.markdown("## 📈 Progresión")
+        _sf_header("Progresión", "📈")
 
         # TM progression
-        st.markdown("### 🎯 Training Max vs Estimated")
+        _sf_sub("Training Max vs Estimated", "🎯")
         tm_prog = tm_progression(df_531)
         if not tm_prog.empty:
             tm_display = tm_prog.copy()
@@ -740,29 +1236,25 @@ if is_531:
             st.info("Se necesitan más datos para mostrar progresión de TM.")
 
         # Volume by week
-        st.divider()
-        st.markdown("### 📊 Volumen Semanal")
+        _sf_sub("Volumen Semanal", "📊")
         wv = weekly_volume_531(df_531)
         if not wv.empty:
             fig = px.bar(
                 wv, x="week_start", y="total_volume", color="set_type",
-                title="Volumen por semana y tipo de serie",
                 labels={"week_start": "", "total_volume": "Volumen (kg)", "set_type": "Tipo"},
                 color_discrete_map={
-                    "warmup": "#64748b", "working_531": "#ef4444",
-                    "amrap": "#f59e0b", "bbb": "#3b82f6", "fsl": "#8b5cf6",
-                    "joker": "#ec4899", "accessory": "#22c55e",
+                    "warmup": "#64748b", "working_531": "#dc2626",
+                    "amrap": "#fbbf24", "bbb": "#3b82f6", "fsl": "#8b5cf6",
+                    "joker": "#f59e0b", "accessory": "#22c55e",
                 },
             )
-            fig.update_layout(**PL)
+            fig.update_layout(**PL_531, height=380)
             st.plotly_chart(fig, use_container_width=True)
 
         # Cycle comparison
-        st.divider()
-        st.markdown("### 🔄 Ciclo vs Ciclo")
+        _sf_sub("Ciclo vs Ciclo", "🔄")
         cyc = cycle_comparison(df_531)
         if not cyc.empty and cyc["cycle_num"].nunique() >= 1:
-            # Table
             cyc_display = cyc.copy()
             cyc_display["lift"] = cyc_display["lift"].map(
                 {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
@@ -776,7 +1268,6 @@ if is_531:
             display_df.columns = col_names
             st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-            # Chart: grouped bar of best e1RM per lift per cycle
             if cyc["cycle_num"].nunique() >= 2:
                 cyc_chart = cyc.copy()
                 cyc_chart["lift"] = cyc_chart["lift"].map(
@@ -785,66 +1276,91 @@ if is_531:
                 cyc_chart["cycle_label"] = "Ciclo " + cyc_chart["cycle_num"].astype(str)
                 fig = px.bar(
                     cyc_chart, x="lift", y="amrap_best_e1rm", color="cycle_label",
-                    barmode="group", title="Mejor e1RM por lift y ciclo",
+                    barmode="group",
                     labels={"lift": "", "amrap_best_e1rm": "e1RM (kg)", "cycle_label": ""},
                 )
-                fig.update_layout(**PL)
+                fig.update_layout(**PL_531, height=380)
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Se necesita al menos 1 ciclo completo para comparar.")
 
         # Muscle volume
-        st.divider()
-        st.markdown("### 💪 Distribución Muscular")
+        _sf_sub("Distribución Muscular", "💪")
         mv = muscle_volume_531(df_531)
         if not mv.empty:
-            fig = px.pie(
-                mv, values="total_volume", names="muscle_group",
-                title="Volumen por grupo muscular",
-            )
-            fig.update_layout(**PL)
+            fig = px.pie(mv, values="total_volume", names="muscle_group")
+            fig.update_layout(**PL_531, height=380)
             st.plotly_chart(fig, use_container_width=True)
 
     elif page == "🏋️ Strength Standards":
-        st.markdown("## 🏋️ Strength Standards (531)")
+        _sf_header("Strength Standards", "🏋️")
 
         levels = strength_level_531(df_531)
         lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
+        level_colors_map = {
+            "Elite": "#a855f7", "Avanzado": "#3b82f6", "Intermedio": "#22c55e",
+            "Principiante": "#fbbf24", "Novato": "#78716c", "Sin datos": "#44403c",
+        }
 
         for lift, label in lift_labels.items():
             info = levels.get(lift, {})
             e1rm = info.get("e1rm")
             ratio = info.get("ratio_bw")
             level = info.get("level", "Sin datos")
-
-            level_colors = {
-                "Elite": "🟣", "Avanzado": "🔵", "Intermedio": "🟢",
-                "Principiante": "🟡", "Novato": "⚪", "Sin datos": "⬜",
-            }
-            emoji = level_colors.get(level, "⬜")
+            color = level_colors_map.get(level, "#44403c")
 
             if e1rm:
-                st.markdown(f"{emoji} **{label}** — e1RM: {e1rm}kg ({ratio}×BW) → **{level}**")
-
-                # Progress bar to next level
+                # Card with progress bar
                 stds = STRENGTH_STANDARDS_531[lift]
                 levels_order = ["beginner", "intermediate", "advanced", "elite"]
+                target_label, target_kg, prev_kg = "", 0, 0
+                reached_max = True
                 for j, lvl in enumerate(levels_order):
                     if ratio < stds[lvl]:
-                        target = stds[lvl] * BODYWEIGHT
-                        prev = stds[levels_order[j-1]] * BODYWEIGHT if j > 0 else 0
-                        progress = (e1rm - prev) / (target - prev) if target > prev else 1
-                        st.progress(min(progress, 1.0), text=f"→ {levels_order[j].title()}: {target:.0f}kg ({stds[lvl]}×BW)")
+                        target_kg = stds[lvl] * BODYWEIGHT
+                        prev_kg = stds[levels_order[j-1]] * BODYWEIGHT if j > 0 else 0
+                        target_label = f"{levels_order[j].title()}: {target_kg:.0f}kg ({stds[lvl]}×BW)"
+                        reached_max = False
                         break
-                else:
-                    st.progress(1.0, text="🏆 Elite alcanzado")
-            else:
-                st.markdown(f"{emoji} **{label}** — {level}")
 
-            st.divider()
+                progress_html = ""
+                if not reached_max:
+                    progress_html = _sf_progress_bar(
+                        e1rm, target_kg, prev_kg, color=color,
+                        label_left=f"{e1rm}kg", label_right=target_label,
+                    )
+                else:
+                    progress_html = _sf_progress_bar(
+                        1, 1, 0, color="#a855f7",
+                        label_left=f"{e1rm}kg", label_right="🏆 Elite alcanzado",
+                    )
+
+                st.markdown(
+                    f'<div class="sf-card" style="border-left-color:{color};">'
+                    f'  <div style="display:flex;align-items:center;justify-content:space-between;">'
+                    f'    <span style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#fafaf9;font-weight:600;font-size:1.05rem;">{label}</span>'
+                    f'    <span class="sf-tag" style="background:{color};color:#fff;">{level}</span>'
+                    f'  </div>'
+                    f'  <div style="font-family:IBM Plex Mono,monospace;font-size:0.85rem;'
+                    f'color:#a8a29e;margin-top:6px;">e1RM: {e1rm}kg · {ratio}×BW</div>'
+                    f'  {progress_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.markdown(
+                    f'<div class="sf-card-muted">'
+                    f'  <span style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#78716c;font-weight:600;">{label}</span>'
+                    f'  <span style="font-family:IBM Plex Mono,monospace;font-size:0.85rem;'
+                    f'color:#44403c;margin-left:12px;">Sin datos</span>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
     elif page == "💪 Sesiones":
-        st.markdown("## 💪 Sesiones")
+        _sf_header("Sesiones", "💪")
 
         sessions = session_summary_531(df_531)
         if sessions.empty:
@@ -859,7 +1375,7 @@ if is_531:
                     c3.metric("Accesorios", f"{s['accessory_sets']} sets | {s['accessory_volume']:,}kg")
 
     elif page == "🏆 PRs":
-        st.markdown("## 🏆 PRs")
+        _sf_header("PRs", "🏆")
 
         prs = pr_table_531(df_531)
         if prs.empty:
@@ -874,7 +1390,7 @@ if is_531:
             )
 
     elif page == "📅 Calendario":
-        st.markdown("## 📅 Calendario Beyond 5/3/1")
+        _sf_header("Calendario Beyond 5/3/1", "📅")
 
         weeks_ahead = st.slider("Semanas a proyectar", 4, 24, 16, key="cal_weeks")
         cal = training_calendar(df_531, weeks_ahead=weeks_ahead)
@@ -987,7 +1503,7 @@ if is_531:
     # 🗓️ VISTA ANUAL
     # ══════════════════════════════════════════════════════════════════════
     elif page == "🗓️ Vista Anual":
-        st.markdown("## 🗓️ Calendario Anual 5/3/1")
+        _sf_header("Calendario Anual 5/3/1", "🗓️")
         
         cal_data = build_annual_calendar(df_531, year=2026)
         
@@ -1034,7 +1550,7 @@ if is_531:
     # 🧠 INTELIGENCIA 531
     # ══════════════════════════════════════════════════════════════════════
     elif page == "🧠 Inteligencia":
-        st.markdown("## 🧠 Inteligencia 5/3/1")
+        _sf_header("Inteligencia 5/3/1", "🧠")
 
         if df_531.empty or df_531[df_531["set_type"] == "amrap"].empty:
             st.info("Necesitas al menos 1 AMRAP registrado para ver métricas de inteligencia.")
@@ -1051,39 +1567,53 @@ if is_531:
 
             # ── Tab 1: TM Sustainability ──
             with tab_tm:
-                st.markdown("### ¿Tu Training Max es sostenible?")
-                st.caption("Basado en reps AMRAP vs mínimos de Wendler. Si no llegas al mínimo, el TM es demasiado alto.")
+                _sf_sub("¿Tu Training Max es sostenible?", "🎯")
+                st.markdown(
+                    '<div class="sf-caption">Basado en reps AMRAP vs mínimos de Wendler. '
+                    'Si no llegas al mínimo, el TM es demasiado alto.</div>',
+                    unsafe_allow_html=True,
+                )
 
                 sus = tm_sustainability(df_531)
 
                 if sus["system_health"] is not None:
                     health = sus["system_health"]
                     if health >= 0.8:
-                        color, emoji = "green", "🟢"
+                        cls = "good"
                     elif health >= 0.4:
-                        color, emoji = "orange", "🟡"
+                        cls = "mid"
                     else:
-                        color, emoji = "red", "🔴"
-                    st.markdown(f"**Salud del sistema:** {emoji} {health:.0%}")
+                        cls = "bad"
+                    st.markdown(
+                        f'<div class="sf-gauge">'
+                        f'  <div class="pct {cls}">{health:.0%}</div>'
+                        f'  <div class="label">Salud del sistema</div>'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
                 cols = st.columns(len(sus["lifts"]) or 1)
                 for i, (lift, data) in enumerate(sus["lifts"].items()):
                     with cols[i % len(cols)]:
-                        st.markdown(f"**{lift_names.get(lift, lift)}**")
-                        st.markdown(f"{data['verdict']}")
-                        if data["trend"] == "declining":
-                            st.caption("📉 Reps en descenso")
-                        elif data["trend"] == "improving":
-                            st.caption("📈 Reps mejorando")
-                        else:
-                            st.caption("➡️ Reps estables")
+                        trend_icon = {"declining": "📉", "improving": "📈"}.get(data["trend"], "➡️")
+                        trend_color = {"declining": "#ef4444", "improving": "#22c55e"}.get(data["trend"], "#78716c")
+                        st.markdown(
+                            f'<div class="sf-intel-card">'
+                            f'  <div class="title">{lift_names.get(lift, lift)}</div>'
+                            f'  <div class="verdict">{data["verdict"]}</div>'
+                            f'  <div style="margin-top:8px;font-family:IBM Plex Mono,monospace;'
+                            f'font-size:0.8rem;color:{trend_color};">'
+                            f'    {trend_icon} Reps {"en descenso" if data["trend"] == "declining" else "mejorando" if data["trend"] == "improving" else "estables"}'
+                            f'  </div>'
+                            f'</div>',
+                            unsafe_allow_html=True,
+                        )
                         if data["alerts"]:
                             for alert in data["alerts"]:
                                 st.warning(alert)
 
-                # Also show validate_tm recommendations
-                st.divider()
-                st.markdown("### Recomendaciones TM")
+                # TM recommendations table
+                _sf_sub("Recomendaciones TM", "⚙️")
                 vtm = validate_tm(df_531)
                 if vtm:
                     vtm_rows = []
@@ -1100,19 +1630,21 @@ if is_531:
 
             # ── Tab 2: AMRAP Performance Index ──
             with tab_perf:
-                st.markdown("### Rendimiento AMRAP — Misma semana, ¿más reps?")
-                st.caption("Compara tus AMRAP en el mismo tipo de semana (5s/3s/531) a lo largo de los ciclos. "
-                           "Mantener o subir reps con más peso = progreso real.")
+                _sf_sub("Rendimiento AMRAP — Misma semana, ¿más reps?", "📊")
+                st.markdown(
+                    '<div class="sf-caption">Compara tus AMRAP en el mismo tipo de semana (5s/3s/531) '
+                    'a lo largo de los ciclos. Mantener o subir reps con más peso = progreso real.</div>',
+                    unsafe_allow_html=True,
+                )
 
                 api = amrap_performance_index(df_531)
                 if api.empty:
                     st.info("Necesitas al menos 2 ciclos para comparar.")
                 else:
                     for lift in api["lift"].unique():
-                        st.markdown(f"#### {lift_names.get(lift, lift)}")
+                        _sf_sub(lift_names.get(lift, lift), "")
                         lift_api = api[api["lift"] == lift].copy()
 
-                        # Chart: e1RM over time colored by week_type
                         import plotly.express as px
                         fig = px.scatter(
                             lift_api, x="date", y="e1rm",
@@ -1120,11 +1652,10 @@ if is_531:
                             hover_data=["weight_kg", "reps", "reps_delta", "e1rm_delta"],
                             labels={"e1rm": "e1RM (kg)", "date": "", "week_label": "Semana"},
                         )
-                        fig.update_layout(**PL, height=300)
+                        fig.update_layout(**PL_531, height=320)
                         fig.update_traces(marker=dict(line=dict(width=1, color="white")))
                         st.plotly_chart(fig, use_container_width=True)
 
-                        # Summary table
                         display = lift_api[["date", "week_label", "weight_kg", "reps",
                                            "e1rm", "reps_delta", "e1rm_delta"]].copy()
                         display.columns = ["Fecha", "Semana", "Peso", "Reps", "e1RM",
@@ -1134,9 +1665,12 @@ if is_531:
 
             # ── Tab 3: Joker Analysis ──
             with tab_joker:
-                st.markdown("### Joker Sets — Uso y tendencia")
-                st.caption("Singles/doubles pesados después del AMRAP. "
-                           "Bien usados aprovechan días buenos. Abusados acumulan fatiga.")
+                _sf_sub("Joker Sets — Uso y tendencia", "⚡")
+                st.markdown(
+                    '<div class="sf-caption">Singles/doubles pesados después del AMRAP. '
+                    'Bien usados aprovechan días buenos. Abusados acumulan fatiga.</div>',
+                    unsafe_allow_html=True,
+                )
 
                 ja = joker_analysis(df_531)
                 c1, c2, c3 = st.columns(3)
@@ -1144,10 +1678,18 @@ if is_531:
                 c2.metric("Sesiones con Jokers", f"{ja['sessions_with_jokers']}/{ja['total_sessions']}")
                 c3.metric("Frecuencia", f"{ja['frequency_pct']}%")
 
-                st.markdown(f"**Valoración:** {ja['assessment']}")
+                # Assessment as styled card
+                st.markdown(
+                    f'<div class="sf-card">'
+                    f'  <div style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+                    f'letter-spacing:1px;color:#a8a29e;font-size:0.75rem;margin-bottom:6px;">Valoración</div>'
+                    f'  <div style="font-family:IBM Plex Mono,monospace;font-size:0.9rem;'
+                    f'color:#fafaf9;">{ja["assessment"]}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
                 if ja["per_lift"]:
-                    st.divider()
                     for lift, data in ja["per_lift"].items():
                         with st.expander(f"{lift_names.get(lift, lift)} — {data['count']} joker sets"):
                             jc1, jc2, jc3 = st.columns(3)
@@ -1158,26 +1700,27 @@ if is_531:
 
             # ── Tab 4: BBB Fatigue ──
             with tab_bbb:
-                st.markdown("### Fatiga en BBB 5×10")
-                st.caption("¿Pierdes reps en las últimas series del 5×10? "
-                           "Si el dropoff es alto, el % BBB puede ser excesivo.")
+                _sf_sub("Fatiga en BBB 5×10", "🏋️")
+                st.markdown(
+                    '<div class="sf-caption">¿Pierdes reps en las últimas series del 5×10? '
+                    'Si el dropoff es alto, el % BBB puede ser excesivo.</div>',
+                    unsafe_allow_html=True,
+                )
 
                 bf = bbb_fatigue_trend(df_531)
                 if bf.empty:
                     st.info("Sin datos BBB registrados.")
                 else:
-                    # Summary metrics
                     avg_dropoff = bf["rep_dropoff"].mean()
                     pct_perfect = (bf["all_tens"].sum() / len(bf) * 100)
                     bc1, bc2, bc3 = st.columns(3)
                     bc1.metric("Drop-off medio", f"{avg_dropoff:+.1f} reps")
-                    bc2.metric("Sesiones 5×10 completas", f"{pct_perfect:.0f}%")
+                    bc2.metric("5×10 completas", f"{pct_perfect:.0f}%")
                     bc3.metric("Sesiones BBB", len(bf))
 
-                    # Per-lift detail
                     for lift in bf["lift"].unique():
                         lf = bf[bf["lift"] == lift].sort_values("date")
-                        st.markdown(f"#### {lift_names.get(lift, lift)}")
+                        _sf_sub(lift_names.get(lift, lift), "")
 
                         display = lf[["date", "weight_kg", "reps_list", "avg_reps",
                                       "rep_dropoff", "pct_of_tm", "fatigue_status"]].copy()
@@ -1189,9 +1732,12 @@ if is_531:
 
             # ── Tab 5: True 1RM Trend ──
             with tab_1rm:
-                st.markdown("### 1RM Real Estimado")
-                st.caption("Tu 1RM real estimado desde AMRAPs — NO es tu Training Max. "
-                           "El TM debería ser ~85-90% de este valor.")
+                _sf_sub("1RM Real Estimado", "📈")
+                st.markdown(
+                    '<div class="sf-caption">Tu 1RM real estimado desde AMRAPs — NO es tu Training Max. '
+                    'El TM debería ser ~85-90% de este valor.</div>',
+                    unsafe_allow_html=True,
+                )
 
                 t1rm = true_1rm_trend(df_531)
                 if t1rm.empty:
@@ -1201,31 +1747,30 @@ if is_531:
 
                     for lift in t1rm["lift"].unique():
                         lt = t1rm[t1rm["lift"] == lift].sort_values("date")
-                        st.markdown(f"#### {lift_names.get(lift, lift)}")
+                        _sf_sub(lift_names.get(lift, lift), "")
 
                         fig = go.Figure()
                         fig.add_trace(go.Scatter(
                             x=lt["date"], y=lt["estimated_1rm"],
                             mode="lines+markers", name="e1RM estimado",
-                            line=dict(color="#10b981", width=2),
+                            line=dict(color="#dc2626", width=2.5),
                             marker=dict(size=8),
                         ))
                         fig.add_trace(go.Scatter(
                             x=lt["date"], y=lt["running_max"],
                             mode="lines", name="Máximo histórico",
-                            line=dict(color="#f59e0b", dash="dot", width=1),
+                            line=dict(color="#fbbf24", dash="dot", width=1.5),
                         ))
                         if lt["effective_tm"].notna().any():
                             fig.add_trace(go.Scatter(
                                 x=lt["date"], y=lt["effective_tm"],
                                 mode="lines", name="Training Max",
-                                line=dict(color="#ef4444", dash="dash", width=1),
+                                line=dict(color="#64748b", dash="dash", width=1.5),
                             ))
-                        fig.update_layout(**PL, height=300, showlegend=True,
+                        fig.update_layout(**PL_531, height=320, showlegend=True,
                                          legend=dict(orientation="h", y=-0.15))
                         st.plotly_chart(fig, use_container_width=True)
 
-                        # Latest stats
                         latest = lt.iloc[-1]
                         rc1, rc2, rc3 = st.columns(3)
                         rc1.metric("e1RM actual", f"{latest['estimated_1rm']:.0f} kg",
@@ -1242,36 +1787,37 @@ if is_531:
     # ⭐ QUALITY SCORE — 531
     # ══════════════════════════════════════════════════════════════════════
     elif page == "⭐ Quality Score":
-        st.markdown("## ⭐ Quality Score")
-        st.caption("Puntuación compuesta por sesión: AMRAP (40%) + BBB (30%) + Accesorios (15%) + Volumen (15%)")
+        _sf_header("Quality Score", "⭐")
+        st.markdown(
+            '<div class="sf-caption">Puntuación compuesta: AMRAP (40%) + BBB (30%) + Accesorios (15%) + Volumen (15%)</div>',
+            unsafe_allow_html=True,
+        )
 
         qdf = workout_quality_531(df_531)
         if qdf.empty:
             st.info("Sin datos suficientes para calcular quality score.")
         else:
-            # Trend summary
             qt = quality_trend(qdf)
             c1, c2, c3, c4 = st.columns(4)
-            c1.metric("Media", f"{qt['avg']:.0f}/100")
-            c2.metric("Mejor", f"{qt['best']}/100")
-            c3.metric("Peor", f"{qt['worst']}/100")
+            c1.metric("💀 Media", f"{qt['avg']:.0f}/100")
+            c2.metric("🔥 Mejor", f"{qt['best']}/100")
+            c3.metric("💀 Peor", f"{qt['worst']}/100")
             trend_emoji = {"improving": "📈", "declining": "📉", "stable": "➡️"}
-            c4.metric("Tendencia", trend_emoji.get(qt["trend"], "➡️"))
+            c4.metric("📊 Tendencia", trend_emoji.get(qt["trend"], "➡️"))
 
-            # Chart
             fig = px.bar(
                 qdf, x="date", y="quality_score", color="grade",
-                color_discrete_map={"S": "#f59e0b", "A": "#10b981", "B": "#3b82f6",
-                                    "C": "#8b5cf6", "D": "#f97316", "F": "#ef4444"},
+                color_discrete_map={"S": "#fbbf24", "A": "#22c55e", "B": "#3b82f6",
+                                    "C": "#8b5cf6", "D": "#f97316", "F": "#dc2626"},
                 hover_data=["lift", "amrap_score", "bbb_score", "acc_score", "vol_score"],
                 labels={"quality_score": "Score", "date": "", "grade": "Nota"},
             )
-            fig.update_layout(**PL, height=350, showlegend=True)
-            fig.add_hline(y=qt["avg"], line_dash="dot", line_color="#94a3b8",
-                         annotation_text=f"Media: {qt['avg']:.0f}")
+            fig.update_layout(**PL_531, height=380, showlegend=True)
+            fig.add_hline(y=qt["avg"], line_dash="dot", line_color="#78716c",
+                         annotation_text=f"Media: {qt['avg']:.0f}",
+                         annotation_font=dict(family="IBM Plex Mono", size=11, color="#a8a29e"))
             st.plotly_chart(fig, use_container_width=True)
 
-            # Breakdown table
             display = qdf[["date", "lift", "quality_score", "grade",
                           "amrap_score", "bbb_score", "acc_score", "vol_score"]].copy()
             display.columns = ["Fecha", "Lift", "Score", "Nota",
@@ -1286,8 +1832,11 @@ if is_531:
     # 📸 WORKOUT CARD — 531
     # ══════════════════════════════════════════════════════════════════════
     elif page == "📸 Workout Card":
-        st.markdown("## 📸 Workout Card")
-        st.caption("Genera una tarjeta PNG compartible de cualquier sesión.")
+        _sf_header("Workout Card", "📸")
+        st.markdown(
+            '<div class="sf-caption">Genera una tarjeta PNG compartible de cualquier sesión.</div>',
+            unsafe_allow_html=True,
+        )
 
         sessions = (
             df_531.drop_duplicates("hevy_id")
@@ -1331,9 +1880,12 @@ if is_531:
     # 🔍 SUSTITUCIONES — 531
     # ══════════════════════════════════════════════════════════════════════
     elif page == "🔍 Sustituciones":
-        st.markdown("## 🔍 Ejercicios No Registrados")
-        st.caption("Ejercicios en tus sesiones que no están en la config de 531. "
-                   "Posibles sustituciones que necesitan mapear.")
+        _sf_header("Ejercicios No Registrados", "🔍")
+        st.markdown(
+            '<div class="sf-caption">Ejercicios en tus sesiones que no están en la config de 531. '
+            'Posibles sustituciones que necesitan mapear.</div>',
+            unsafe_allow_html=True,
+        )
 
         unknowns = detect_unknown_exercises(df_531, EXERCISE_DB_531, program_name="531")
         if unknowns.empty:
@@ -1356,6 +1908,7 @@ if is_531:
 # ══════════════════════════════════════════════════════════════════════
 # 🔥 BBD DASHBOARD (existing code below — unchanged)
 # ══════════════════════════════════════════════════════════════════════
+_inject_base_css()
 
 if _bbd_error and not is_531:
     st.error(f"❌ Error cargando datos BBD: {_bbd_error}")
