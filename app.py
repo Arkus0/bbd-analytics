@@ -26,7 +26,7 @@ from src.analytics_531 import (
 )
 from src.config_531 import (
     DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
-    PROGRAM_START_531,
+    PROGRAM_START_531, EXERCISE_DB_531,
 )
 from src.analytics import (
     add_derived_columns, global_summary, weekly_breakdown,
@@ -44,7 +44,12 @@ from src.analytics import (
     # Gamification
     gamification_status,
 )
-from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN, NOTION_HALL_OF_TITANS_DB, BODYWEIGHT
+from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN, NOTION_HALL_OF_TITANS_DB, BODYWEIGHT, EXERCISE_DB
+from src.shared_analytics import (
+    detect_unknown_exercises,
+    workout_quality_531, workout_quality_bbd, quality_trend,
+    generate_workout_card, build_card_data_531, build_card_data_bbd,
+)
 import requests as _requests
 import re as _re
 
@@ -413,9 +418,12 @@ with st.sidebar:
             "🎯 AMRAP Tracker",
             "📈 Progresión",
             "🧠 Inteligencia",
+            "⭐ Quality Score",
             "🏋️ Strength Standards",
             "💪 Sesiones",
             "🏆 PRs",
+            "📸 Workout Card",
+            "🔍 Sustituciones",
             "📅 Calendario",
             "🗓️ Vista Anual",
         ], label_visibility="collapsed")
@@ -428,10 +436,13 @@ with st.sidebar:
         "⚡ Densidad",
         "🏋️ Strength Standards",
         "🧠 Inteligencia",
+        "⭐ Quality Score",
         "🎮 Niveles",
         "🏛️ Hall of Titans",
         "💪 Sesiones",
         "🏆 PRs",
+        "📸 Workout Card",
+        "🔍 Sustituciones",
         "🎯 Adherencia",
     ], label_visibility="collapsed")
 
@@ -1226,6 +1237,119 @@ if is_531:
                                       f"{pct:.0f}%",
                                       delta="OK" if 82 <= pct <= 92 else ("Alto" if pct > 92 else "Bajo"),
                                       delta_color="normal" if 82 <= pct <= 92 else "inverse")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # ⭐ QUALITY SCORE — 531
+    # ══════════════════════════════════════════════════════════════════════
+    elif page == "⭐ Quality Score":
+        st.markdown("## ⭐ Quality Score")
+        st.caption("Puntuación compuesta por sesión: AMRAP (40%) + BBB (30%) + Accesorios (15%) + Volumen (15%)")
+
+        qdf = workout_quality_531(df_531)
+        if qdf.empty:
+            st.info("Sin datos suficientes para calcular quality score.")
+        else:
+            # Trend summary
+            qt = quality_trend(qdf)
+            c1, c2, c3, c4 = st.columns(4)
+            c1.metric("Media", f"{qt['avg']:.0f}/100")
+            c2.metric("Mejor", f"{qt['best']}/100")
+            c3.metric("Peor", f"{qt['worst']}/100")
+            trend_emoji = {"improving": "📈", "declining": "📉", "stable": "➡️"}
+            c4.metric("Tendencia", trend_emoji.get(qt["trend"], "➡️"))
+
+            # Chart
+            fig = px.bar(
+                qdf, x="date", y="quality_score", color="grade",
+                color_discrete_map={"S": "#f59e0b", "A": "#10b981", "B": "#3b82f6",
+                                    "C": "#8b5cf6", "D": "#f97316", "F": "#ef4444"},
+                hover_data=["lift", "amrap_score", "bbb_score", "acc_score", "vol_score"],
+                labels={"quality_score": "Score", "date": "", "grade": "Nota"},
+            )
+            fig.update_layout(**PL, height=350, showlegend=True)
+            fig.add_hline(y=qt["avg"], line_dash="dot", line_color="#94a3b8",
+                         annotation_text=f"Media: {qt['avg']:.0f}")
+            st.plotly_chart(fig, use_container_width=True)
+
+            # Breakdown table
+            display = qdf[["date", "lift", "quality_score", "grade",
+                          "amrap_score", "bbb_score", "acc_score", "vol_score"]].copy()
+            display.columns = ["Fecha", "Lift", "Score", "Nota",
+                             "AMRAP /40", "BBB /30", "Acc /15", "Vol /15"]
+            display["Fecha"] = display["Fecha"].dt.strftime("%d/%m")
+            lift_names = {"ohp": "OHP", "deadlift": "Peso Muerto", "bench": "Banca", "squat": "Sentadilla"}
+            display["Lift"] = display["Lift"].map(lift_names).fillna(display["Lift"])
+            st.dataframe(display.sort_values("Fecha", ascending=False),
+                        use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 📸 WORKOUT CARD — 531
+    # ══════════════════════════════════════════════════════════════════════
+    elif page == "📸 Workout Card":
+        st.markdown("## 📸 Workout Card")
+        st.caption("Genera una tarjeta PNG compartible de cualquier sesión.")
+
+        sessions = (
+            df_531.drop_duplicates("hevy_id")
+            .sort_values("date", ascending=False)[["date", "hevy_id", "workout_title"]]
+            .head(20)
+        )
+        if sessions.empty:
+            st.info("Sin sesiones disponibles.")
+        else:
+            options = {
+                f"{row['date'].strftime('%d/%m')} — {row['workout_title']}": row["hevy_id"]
+                for _, row in sessions.iterrows()
+            }
+            selected = st.selectbox("Selecciona sesión", list(options.keys()))
+            hid = options[selected]
+
+            # Build card data
+            card_data = build_card_data_531(df_531, hid)
+            if card_data:
+                # Add quality score if available
+                qdf = workout_quality_531(df_531)
+                if not qdf.empty:
+                    q_row = qdf[qdf["hevy_id"] == hid]
+                    if not q_row.empty:
+                        card_data["quality_score"] = int(q_row["quality_score"].iloc[0])
+                        card_data["grade"] = q_row["grade"].iloc[0]
+
+                try:
+                    png_bytes = generate_workout_card(card_data, program="531")
+                    st.image(png_bytes, use_container_width=True)
+                    st.download_button(
+                        "⬇️ Descargar PNG",
+                        data=png_bytes,
+                        file_name=f"workout_card_{card_data['date'].strftime('%Y%m%d')}.png",
+                        mime="image/png",
+                    )
+                except ImportError:
+                    st.error("Pillow no instalado. Necesario para generar cards.")
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🔍 SUSTITUCIONES — 531
+    # ══════════════════════════════════════════════════════════════════════
+    elif page == "🔍 Sustituciones":
+        st.markdown("## 🔍 Ejercicios No Registrados")
+        st.caption("Ejercicios en tus sesiones que no están en la config de 531. "
+                   "Posibles sustituciones que necesitan mapear.")
+
+        unknowns = detect_unknown_exercises(df_531, EXERCISE_DB_531, program_name="531")
+        if unknowns.empty:
+            st.success("✅ Todos los ejercicios están mapeados en la config.")
+        else:
+            st.warning(f"⚠️ {len(unknowns)} ejercicio(s) desconocido(s) detectados")
+            for _, row in unknowns.iterrows():
+                with st.expander(f"**{row['hevy_name']}** — {row['session_count']} sesiones"):
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Sesiones", row["session_count"])
+                    c2.metric("Total sets", row["total_sets"])
+                    c3.metric("Grupo muscular", row["suggested_muscle_group"])
+                    st.code(f"Template ID: {row['template_id']}", language=None)
+                    st.caption(f"Visto: {row['first_seen'].strftime('%d/%m')} → {row['last_seen'].strftime('%d/%m')}")
+                    if row["appears_on"]:
+                        st.caption(f"Aparece en: {row['appears_on']}")
 
     st.stop()  # Don't fall through to BBD sections
 
@@ -2176,6 +2300,112 @@ elif page == "🎯 Adherencia":
         fig.add_hline(y=5, line_dash="dot", line_color="#ef4444", annotation_text="Objetivo: 5-6")
         fig.update_layout(**PL, height=300, yaxis_title="Sesiones", showlegend=False)
         st.plotly_chart(fig, use_container_width=True, key="chart_12")
+
+# ══════════════════════════════════════════════════════════════════════
+# ⭐ QUALITY SCORE — BBD
+# ══════════════════════════════════════════════════════════════════════
+elif page == "⭐ Quality Score":
+    st.markdown("## ⭐ Quality Score")
+    st.caption("Puntuación compuesta: Key Lift (35%) + Volumen (25%) + Cobertura (25%) + Consistencia (15%)")
+
+    qdf = workout_quality_bbd(df, DAY_CONFIG, EXERCISE_DB)
+    if qdf.empty:
+        st.info("Sin datos suficientes.")
+    else:
+        qt = quality_trend(qdf)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Media", f"{qt['avg']:.0f}/100")
+        c2.metric("Mejor", f"{qt['best']}/100")
+        c3.metric("Peor", f"{qt['worst']}/100")
+        trend_emoji = {"improving": "📈", "declining": "📉", "stable": "➡️"}
+        c4.metric("Tendencia", trend_emoji.get(qt["trend"], "➡️"))
+
+        fig = px.bar(
+            qdf, x="date", y="quality_score", color="grade",
+            color_discrete_map={"S": "#f59e0b", "A": "#10b981", "B": "#3b82f6",
+                                "C": "#8b5cf6", "D": "#f97316", "F": "#ef4444"},
+            hover_data=["day_name", "lift_score", "vol_score", "cov_score", "dur_score"],
+            labels={"quality_score": "Score", "date": "", "grade": "Nota"},
+        )
+        fig.update_layout(**PL, height=350, showlegend=True)
+        fig.add_hline(y=qt["avg"], line_dash="dot", line_color="#94a3b8",
+                     annotation_text=f"Media: {qt['avg']:.0f}")
+        st.plotly_chart(fig, use_container_width=True, key="chart_quality_bbd")
+
+        display = qdf[["date", "day_name", "quality_score", "grade",
+                      "lift_score", "vol_score", "cov_score", "dur_score"]].copy()
+        display.columns = ["Fecha", "Día", "Score", "Nota",
+                         "Lift /35", "Vol /25", "Cov /25", "Dur /15"]
+        display["Fecha"] = display["Fecha"].dt.strftime("%d/%m")
+        st.dataframe(display.sort_values("Fecha", ascending=False),
+                    use_container_width=True, hide_index=True)
+
+# ══════════════════════════════════════════════════════════════════════
+# 📸 WORKOUT CARD — BBD
+# ══════════════════════════════════════════════════════════════════════
+elif page == "📸 Workout Card":
+    st.markdown("## 📸 Workout Card")
+    st.caption("Genera una tarjeta PNG compartible de cualquier sesión.")
+
+    sessions = (
+        df.drop_duplicates("hevy_id")
+        .sort_values("date", ascending=False)[["date", "hevy_id", "day_name"]]
+        .head(20)
+    )
+    if sessions.empty:
+        st.info("Sin sesiones disponibles.")
+    else:
+        options = {
+            f"{row['date'].strftime('%d/%m')} — {row['day_name']}": row["hevy_id"]
+            for _, row in sessions.iterrows()
+        }
+        selected = st.selectbox("Selecciona sesión", list(options.keys()))
+        hid = options[selected]
+
+        card_data = build_card_data_bbd(df, hid, EXERCISE_DB)
+        if card_data:
+            qdf = workout_quality_bbd(df, DAY_CONFIG, EXERCISE_DB)
+            if not qdf.empty:
+                q_row = qdf[qdf["hevy_id"] == hid]
+                if not q_row.empty:
+                    card_data["quality_score"] = int(q_row["quality_score"].iloc[0])
+                    card_data["grade"] = q_row["grade"].iloc[0]
+
+            try:
+                png_bytes = generate_workout_card(card_data, program="BBD")
+                st.image(png_bytes, use_container_width=True)
+                st.download_button(
+                    "⬇️ Descargar PNG",
+                    data=png_bytes,
+                    file_name=f"workout_card_{card_data['date'].strftime('%Y%m%d')}.png",
+                    mime="image/png",
+                )
+            except ImportError:
+                st.error("Pillow no instalado. Necesario para generar cards.")
+
+# ══════════════════════════════════════════════════════════════════════
+# 🔍 SUSTITUCIONES — BBD
+# ══════════════════════════════════════════════════════════════════════
+elif page == "🔍 Sustituciones":
+    st.markdown("## 🔍 Ejercicios No Registrados")
+    st.caption("Ejercicios en tus sesiones que no están en EXERCISE_DB. "
+               "Posibles sustituciones que necesitan mapear.")
+
+    unknowns = detect_unknown_exercises(df, EXERCISE_DB, program_name="BBD")
+    if unknowns.empty:
+        st.success("✅ Todos los ejercicios están mapeados en EXERCISE_DB.")
+    else:
+        st.warning(f"⚠️ {len(unknowns)} ejercicio(s) desconocido(s) detectados")
+        for _, row in unknowns.iterrows():
+            with st.expander(f"**{row['hevy_name']}** — {row['session_count']} sesiones"):
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Sesiones", row["session_count"])
+                c2.metric("Total sets", row["total_sets"])
+                c3.metric("Grupo muscular", row["suggested_muscle_group"])
+                st.code(f"Template ID: {row['template_id']}", language=None)
+                st.caption(f"Visto: {row['first_seen'].strftime('%d/%m')} → {row['last_seen'].strftime('%d/%m')}")
+                if row["appears_on"]:
+                    st.caption(f"Aparece en día(s): {row['appears_on']}")
 
 # ── Footer ───────────────────────────────────────────────────────────
 st.sidebar.divider()

@@ -490,3 +490,135 @@ class TestTrue1rmTrend:
         result = true_1rm_trend(df)
         # TM 58 / e1RM 66.7 ≈ 86.9%
         assert 85 < result.iloc[0]["tm_as_pct_of_1rm"] < 90
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# SHARED ANALYTICS TESTS
+# ═══════════════════════════════════════════════════════════════════════
+
+class TestDetectUnknownExercises:
+    """Auto-detect exercise substitutions."""
+
+    def test_all_known(self):
+        from src.shared_analytics import detect_unknown_exercises
+        db = {"AAA": {"name": "Curl"}, "BBB": {"name": "Press"}}
+        df = pd.DataFrame([
+            {"exercise_template_id": "AAA", "exercise": "Curl", "date": pd.Timestamp("2026-02-20"), "hevy_id": "x"},
+        ])
+        result = detect_unknown_exercises(df, db)
+        assert result.empty
+
+    def test_unknown_detected(self):
+        from src.shared_analytics import detect_unknown_exercises
+        db = {"AAA": {"name": "Curl"}}
+        df = pd.DataFrame([
+            {"exercise_template_id": "AAA", "exercise": "Curl", "date": pd.Timestamp("2026-02-20"), "hevy_id": "x"},
+            {"exercise_template_id": "ZZZ", "exercise": "Remo con Barra", "date": pd.Timestamp("2026-02-20"), "hevy_id": "x"},
+            {"exercise_template_id": "ZZZ", "exercise": "Remo con Barra", "date": pd.Timestamp("2026-02-21"), "hevy_id": "y"},
+        ])
+        result = detect_unknown_exercises(df, db)
+        assert len(result) == 1
+        assert result.iloc[0]["template_id"] == "ZZZ"
+        assert result.iloc[0]["session_count"] == 2
+        assert result.iloc[0]["suggested_muscle_group"] == "Espalda"  # "remo"
+
+    def test_muscle_group_guessing(self):
+        from src.shared_analytics import detect_unknown_exercises
+        df = pd.DataFrame([
+            {"exercise_template_id": "X1", "exercise": "Curl de Bíceps", "date": pd.Timestamp("2026-02-20"), "hevy_id": "a"},
+            {"exercise_template_id": "X2", "exercise": "Sentadilla Búlgara", "date": pd.Timestamp("2026-02-20"), "hevy_id": "a"},
+        ])
+        result = detect_unknown_exercises(df, {})
+        mg_map = dict(zip(result["template_id"], result["suggested_muscle_group"]))
+        assert mg_map["X1"] == "Bíceps"
+        assert mg_map["X2"] == "Piernas"
+
+
+class TestWorkoutQuality531:
+    """531 quality score."""
+
+    def test_perfect_session(self):
+        from src.shared_analytics import workout_quality_531
+        df = _make_531_df([
+            # AMRAP: 10 reps on 5s week (min 5) → 20 + 5*4 = 40
+            {"date": "2026-02-20", "set_type": "amrap", "hevy_id": "a", "lift": "ohp",
+             "reps": 10, "e1rm": 66.7, "weight_kg": 50, "volume_kg": 500,
+             "exercise": "OHP", "is_main_lift": True, "week_in_cycle": 1},
+            # 5 BBB sets of 10 → 30
+            *[{"date": "2026-02-20", "set_type": "bbb", "hevy_id": "a", "lift": "ohp",
+               "reps": 10, "e1rm": 40, "weight_kg": 30, "volume_kg": 300,
+               "exercise": "OHP", "is_main_lift": True, "set_number": i, "week_in_cycle": 1}
+              for i in range(5)],
+            # 2 accessories
+            {"date": "2026-02-20", "set_type": "accessory", "hevy_id": "a", "lift": "ohp",
+             "reps": 12, "e1rm": 20, "weight_kg": 15, "volume_kg": 180,
+             "exercise": "Lateral Raise", "is_main_lift": False, "week_in_cycle": 1},
+            {"date": "2026-02-20", "set_type": "accessory", "hevy_id": "a", "lift": "ohp",
+             "reps": 15, "e1rm": 25, "weight_kg": 20, "volume_kg": 300,
+             "exercise": "Face Pull", "is_main_lift": False, "week_in_cycle": 1},
+        ])
+        result = workout_quality_531(df)
+        assert len(result) == 1
+        assert result.iloc[0]["quality_score"] >= 80  # High score
+        assert result.iloc[0]["grade"] in ("S", "A")
+
+    def test_grade_mapping(self):
+        from src.shared_analytics import _grade
+        assert _grade(95) == "S"
+        assert _grade(82) == "A"
+        assert _grade(70) == "B"
+        assert _grade(50) == "C"
+        assert _grade(20) == "F"
+
+
+class TestWorkoutCard:
+    """Workout card generation."""
+
+    def test_card_builds_data_531(self):
+        from src.shared_analytics import build_card_data_531
+        df = _make_531_df([
+            {"date": "2026-02-20", "set_type": "amrap", "hevy_id": "sess1", "lift": "ohp",
+             "reps": 8, "e1rm": 63.3, "weight_kg": 50, "volume_kg": 400,
+             "exercise": "OHP", "is_main_lift": True, "workout_title": "BBB Día 1"},
+            {"date": "2026-02-20", "set_type": "bbb", "hevy_id": "sess1", "lift": "ohp",
+             "reps": 10, "e1rm": 40, "weight_kg": 30, "volume_kg": 300,
+             "exercise": "OHP", "is_main_lift": True, "workout_title": "BBB Día 1"},
+        ])
+        card = build_card_data_531(df, "sess1")
+        assert card is not None
+        assert card["amrap_reps"] == 8
+        assert card["amrap_weight"] == 50
+        assert "Volumen" in card["stats"]
+
+    def test_card_returns_none_for_missing(self):
+        from src.shared_analytics import build_card_data_531
+        df = _make_531_df([
+            {"date": "2026-02-20", "hevy_id": "sess1"},
+        ])
+        card = build_card_data_531(df, "nonexistent")
+        assert card is None
+
+    def test_png_generation(self):
+        from src.shared_analytics import generate_workout_card
+        card_data = {
+            "date": pd.Timestamp("2026-02-20"),
+            "title": "BBB Día 1",
+            "lift": "ohp",
+            "amrap_weight": 50,
+            "amrap_reps": 8,
+            "amrap_e1rm": 63.3,
+            "bbb_sets": 5,
+            "bbb_weight": 30,
+            "bbb_avg_reps": 10,
+            "stats": {"Volumen": "1,200kg", "Sets": "12", "Ejercicios": "4"},
+            "quality_score": 85,
+            "grade": "A",
+        }
+        try:
+            png = generate_workout_card(card_data, program="531")
+            assert isinstance(png, bytes)
+            assert len(png) > 1000  # Should be a real image
+            assert png[:4] == b'\x89PNG'  # PNG magic bytes
+        except ImportError:
+            pass  # Pillow not installed in test env
+
