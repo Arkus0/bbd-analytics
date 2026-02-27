@@ -568,9 +568,10 @@ if is_531:
 
         st.divider()
 
-        # AMRAP summary
+        # AMRAP summary — latest per lift only
         amraps = amrap_tracking(df_531)
         if not amraps.empty:
+            amraps = amraps.sort_values("date").groupby("lift").tail(1)
             st.markdown("### 🎯 Últimos AMRAPs")
             for _, row in amraps.iterrows():
                 lift_label = lift_labels.get(row["lift"], row["lift"])
@@ -583,9 +584,10 @@ if is_531:
 
         st.divider()
 
-        # BBB compliance
+        # BBB compliance — latest per lift only
         bbb = bbb_compliance(df_531)
         if not bbb.empty:
+            bbb = bbb.sort_values("date").groupby("lift").tail(1)
             st.markdown("### 📦 BBB Supplemental")
             for _, row in bbb.iterrows():
                 lift_label = lift_labels.get(row["lift"], str(row["lift"]))
@@ -596,9 +598,10 @@ if is_531:
                     f"{row['n_sets']} sets × {row['avg_reps']} reps avg (total: {row['total_reps']})"
                 )
 
-        # FSL compliance
+        # FSL compliance — latest per lift only
         fsl = fsl_compliance(df_531)
         if not fsl.empty:
+            fsl = fsl.sort_values("date").groupby("lift").tail(1)
             st.markdown("### 🔁 FSL (First Set Last)")
             st.caption("Suplementario con el peso del primer working set — 3-5 sets × 5-8 reps.")
             for _, row in fsl.iterrows():
@@ -610,9 +613,10 @@ if is_531:
                     f"{row['n_sets']} sets × {row['avg_reps']} reps avg"
                 )
 
-        # Joker sets
+        # Joker sets — latest per lift only
         jokers = joker_sets_summary(df_531)
         if not jokers.empty:
+            jokers = jokers.sort_values("date").groupby("lift").tail(1)
             st.divider()
             st.markdown("### 🃏 Joker Sets")
             st.caption("Sets pesados extra post-AMRAP — singles/doubles/triples por encima del top set.")
