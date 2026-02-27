@@ -228,8 +228,8 @@ def create_531_logbook_entry(session_df: pd.DataFrame) -> int:
                     properties["Lift"] = {"select": {"name": LIFT_LABELS.get(lift, lift)}}
                 if not amrap_sets.empty:
                     properties["AMRAP Reps"] = {"number": int(amrap_sets["reps"].iloc[0])}
-                    tm = TRAINING_MAX.get(lift)
-                    if tm:
+                    tm = ex_df["effective_tm"].iloc[0] if "effective_tm" in ex_df.columns else None
+                    if tm and tm > 0:
                         properties["% TM"] = {"number": round(max_w / tm, 3)}
                 if ex_df.get("cycle_num") is not None and not ex_df["cycle_num"].isna().all():
                     properties["Ciclo"] = {"number": int(ex_df["cycle_num"].iloc[0])}
@@ -261,8 +261,8 @@ def create_531_logbook_entry(session_df: pd.DataFrame) -> int:
                 }
                 if lift:
                     properties["Lift"] = {"select": {"name": LIFT_LABELS.get(lift, lift)}}
-                    tm = TRAINING_MAX.get(lift)
-                    if tm:
+                    tm = ex_df["effective_tm"].iloc[0] if "effective_tm" in ex_df.columns else None
+                    if tm and tm > 0:
                         properties["% TM"] = {"number": round(bbb_w / tm, 3)}
 
                 try:

@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from src.config_531 import (
     TRAINING_MAX,
     TM_INCREMENT,
+    TM_HISTORY,
     CYCLE_WEEKS,
     BBB_PCT_PROGRESSION,
     DAY_CONFIG_531,
@@ -31,6 +32,7 @@ from src.config_531 import (
     round_to_plate,
     get_cycle_position,
     get_effective_tm,
+    get_session_tm,
     expected_weights,
     MACRO_CYCLE_LENGTH,
     WORKING_BLOCK_LENGTH,
@@ -81,9 +83,15 @@ def classify_sets(exercise: dict, all_exercises: list[dict]) -> str:
     return "accessory"
 
 
-def parse_workout_sets(workout: dict) -> list[dict]:
+def parse_workout_sets(workout: dict, session_tms: dict | None = None) -> list[dict]:
     """
     Parse a single BBB workout into classified set rows.
+
+    Args:
+        workout: Raw Hevy workout dict.
+        session_tms: {lift: effective_tm_kg} for this session.
+            Computed from TM_HISTORY + bumps by the caller.
+            If None, falls back to current TRAINING_MAX.
 
     For main lifts, splits sets into:
     - warmup (lighter, before working sets)
@@ -104,7 +112,8 @@ def parse_workout_sets(workout: dict) -> list[dict]:
         if tid in TID_TO_LIFT:
             # This is a main lift — classify each set
             lift = TID_TO_LIFT[tid]
-            classified = _classify_main_lift_sets(sets, lift)
+            tm = (session_tms or {}).get(lift) or TRAINING_MAX.get(lift)
+            classified = _classify_main_lift_sets(sets, lift, tm_override=tm)
             for s_info in classified:
                 rows.append({
                     "date": pd.Timestamp(date),
@@ -142,24 +151,15 @@ def parse_workout_sets(workout: dict) -> list[dict]:
     return rows
 
 
-def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
+def _classify_main_lift_sets(sets: list[dict], lift: str, tm_override: float = None) -> list[dict]:
     """
     Classify individual sets of a main lift exercise.
 
-    Infers the session TM from the data itself (instead of relying on the
-    current static TM, which may have been recalibrated after the session).
-    Uses both weight matching AND rep patterns to distinguish:
+    Uses the session's effective TM (passed via tm_override) to match
+    working sets against expected percentages for each week type (5s/3s/531).
 
-    - warmup: lighter sets before the working sets
-    - working_531: the first 2 prescribed 531 sets (ascending weight)
-    - amrap: the last working set (heaviest of the 3, typically high reps)
-    - joker: sets AFTER the working block that are HEAVIER, low reps (1-5)
-    - bbb: 5×10 supplemental at ~50% TM (consistent low weight, high reps)
-    - fsl: First Set Last — weight ≈ first working set, moderate reps (5-8)
-    - bbb_amrap: last BBB set if reps significantly exceed the others
-
-    Key insight: warmup, working sets, and BBB are predetermined from the TM.
-    Jokers, FSL, and BBB AMRAP are mutable per session.
+    Predetermined (from TM):  warmup, working_531, amrap, bbb
+    Mutable (per session):    joker, fsl, bbb_amrap
 
     Returns list of {type, weight, reps, set_num}.
     """
@@ -174,96 +174,54 @@ def _classify_main_lift_sets(sets: list[dict], lift: str) -> list[dict]:
     if not parsed:
         return []
 
-    base_tm = TRAINING_MAX.get(lift)
-    if not base_tm:
+    tm = tm_override or TRAINING_MAX.get(lift)
+    if not tm:
         return _classify_main_lift_sets_fallback(parsed)
 
-    # ── Step 1: Detect working sets using multi-TM + rep-pattern scoring ──
-    # Try the current TM and also TMs inferred from each candidate triplet.
-    # The AMRAP (top working set) should have high reps; jokers are heavier
-    # with low reps.  Scoring rewards both weight accuracy and AMRAP rep signal.
-
-    # Build candidate TMs: current TM ± several increments
-    increment = TM_INCREMENT.get(lift, 2)
-    candidate_tms = set()
-    for offset in range(-6, 2):  # try TMs from 6 bumps below to 1 above
-        candidate_tms.add(base_tm + offset * increment)
-
-    # Also infer TMs from the data itself: for each triplet of ascending
-    # non-warmup sets, back-calculate what TM they'd imply for each week.
-    week_top_pcts = {1: 0.85, 2: 0.90, 3: 0.95}
-    for start in range(len(parsed) - 2):
-        triplet = parsed[start:start + 3]
-        if triplet[0]["hevy_type"] == "warmup":
-            continue
-        if not (triplet[0]["weight"] <= triplet[1]["weight"] <= triplet[2]["weight"]):
-            continue
-        top_w = triplet[2]["weight"]
-        for wk, pct in week_top_pcts.items():
-            inferred = round_to_plate(top_w / pct)
-            candidate_tms.add(inferred)
-
+    # ── Step 1: Find the 3 working sets by matching expected weights ──
+    # Try each week type (5s, 3s, 531) against the session TM.
+    # Score = weight matches + rep pattern bonus.
     best_week = None
     best_score = -999
     working_indices = None
 
-    for tm in candidate_tms:
-        if tm <= 0:
+    for week_num in [1, 2, 3]:
+        exp = expected_weights(lift, week_num, tm_override=tm)
+        if not exp:
             continue
-        for week_num in [1, 2, 3]:
-            exp = expected_weights(lift, week_num, tm_override=tm)
-            if not exp:
+        exp_weights = [e["weight"] for e in exp]
+
+        for start in range(len(parsed) - 2):
+            candidates = parsed[start:start + 3]
+            if candidates[0]["hevy_type"] == "warmup":
+                continue
+            # Working sets must be strictly ascending weight
+            if not (candidates[0]["weight"] < candidates[1]["weight"] < candidates[2]["weight"]):
                 continue
 
-            exp_weights = [e["weight"] for e in exp]
-            for start in range(len(parsed) - 2):
-                candidates = parsed[start:start + 3]
-                if candidates[0]["hevy_type"] == "warmup":
-                    continue
-                # Working sets must be strictly ascending weight
-                if not (candidates[0]["weight"] < candidates[1]["weight"] < candidates[2]["weight"]):
-                    continue
+            # Weight match score (0-3 points, ±2kg tolerance)
+            weight_score = sum(
+                1 for cand, ew in zip(candidates, exp_weights)
+                if abs(cand["weight"] - ew) <= 2
+            )
+            if weight_score < 2:
+                continue
 
-                # Weight match score (0-3 points, ±2kg tolerance)
-                weight_score = 0
-                for cand, ew in zip(candidates, exp_weights):
-                    if abs(cand["weight"] - ew) <= 2:
-                        weight_score += 1
+            # Rep pattern: AMRAP (top set) typically has high reps
+            top_reps = candidates[2]["reps"]
+            rep_bonus = 3 if top_reps > 8 else (1 if top_reps > 5 else 0)
 
-                if weight_score < 2:
-                    continue  # not a plausible match
+            # Structural: penalize if heavier sets follow with low reps (→ jokers)
+            heavier_after = [p for p in parsed
+                            if p["idx"] > candidates[2]["idx"]
+                            and p["weight"] > candidates[2]["weight"]]
+            structural_penalty = -2 if heavier_after and top_reps <= 5 else 0
 
-                # Rep pattern bonus: the top set (AMRAP) should have more
-                # reps than a typical joker (1-5).  High reps = strong signal.
-                top_reps = candidates[2]["reps"]
-                if top_reps > 8:
-                    rep_bonus = 3  # clear AMRAP
-                elif top_reps > 5:
-                    rep_bonus = 1  # moderate
-                else:
-                    rep_bonus = 0  # could be joker misidentified as working
-
-                # Structural penalty: if heavier sets exist AFTER this
-                # triplet, the top set is probably NOT the real AMRAP —
-                # those heavier sets are jokers done above the working weight.
-                structural_penalty = 0
-                remaining = [p for p in parsed if p["idx"] > candidates[2]["idx"]]
-                heavier_after = [p for p in remaining if p["weight"] > candidates[2]["weight"]]
-                if heavier_after:
-                    # There are heavier sets after → this triplet's top set
-                    # is likely a mid-range set, not the true top working set.
-                    # BUT only penalize if the top set has low reps (real
-                    # AMRAPs can be followed by jokers, but the AMRAP will
-                    # have high reps).
-                    if top_reps <= 5:
-                        structural_penalty = -2
-
-                score = weight_score + rep_bonus + structural_penalty
-
-                if score > best_score:
-                    best_score = score
-                    best_week = week_num
-                    working_indices = set(p["idx"] for p in candidates)
+            score = weight_score + rep_bonus + structural_penalty
+            if score > best_score:
+                best_score = score
+                best_week = week_num
+                working_indices = set(p["idx"] for p in candidates)
 
     if best_score < 2:
         return _classify_main_lift_sets_fallback(parsed)
@@ -390,10 +348,30 @@ def _classify_main_lift_sets_fallback(parsed: list[dict]) -> list[dict]:
 # ═════════════════════════════════════════════════════════════════════
 
 def workouts_to_dataframe_531(workouts: list[dict]) -> pd.DataFrame:
-    """Convert raw BBB workouts to a flat DataFrame with set-level classification."""
+    """Convert raw BBB workouts to a flat DataFrame with set-level classification.
+
+    Sorts workouts chronologically, computes the effective TM for each session
+    using TM_HISTORY + automatic bumps, and passes it to the classifier so
+    every set is classified against the TM that was actually in effect.
+    """
+    # Sort chronologically so session numbering is correct
+    workouts = sorted(workouts, key=lambda w: w.get("start_time", ""))
+
+    lifts = list(TRAINING_MAX.keys())
     all_rows = []
-    for w in workouts:
-        rows = parse_workout_sets(w)
+
+    for session_idx, w in enumerate(workouts):
+        date_str = w["start_time"][:10]
+        pos = get_cycle_position(session_idx)  # 0-based total completed
+        tm_bumps = pos["tm_bumps_completed"]
+
+        # Build per-lift TM dict for this session
+        session_tms = {
+            lift: get_session_tm(lift, date_str, tm_bumps)
+            for lift in lifts
+        }
+
+        rows = parse_workout_sets(w, session_tms=session_tms)
         all_rows.extend(rows)
 
     df = pd.DataFrame(all_rows)
@@ -430,6 +408,9 @@ def add_cycle_info(df: pd.DataFrame) -> pd.DataFrame:
     Beyond scheme: 7-week macro = 3 working + 3 working + 1 deload.
     TM bumps after each 3-week mini-cycle.
     Each 'week' = 4 training sessions.
+
+    Also computes effective_tm per session — the TM that was actually in
+    effect for each session, accounting for TM_HISTORY and bumps.
     """
     if df.empty:
         return df
@@ -459,6 +440,32 @@ def add_cycle_info(df: pd.DataFrame) -> pd.DataFrame:
     df["cycle_num"] = df["macro_num"]
     df["week_in_cycle"] = df["week_type"]
     df["cycle_week"] = df["week_in_macro"]
+
+    # ── Effective TM per session ──
+    # For each session, compute the TM that was in effect for each lift.
+    # Stored as a single "effective_tm" column matching the row's lift.
+    # Rows without a lift (accessories) get NaN.
+    lifts = list(TRAINING_MAX.keys())
+
+    # Pre-compute TMs per session (date + tm_bumps → per-lift TMs)
+    session_tms = {}
+    for sn, pos in positions.items():
+        date = [d for d, s in date_to_session.items() if s == sn][0]
+        date_str = str(date)[:10]
+        tm_bumps = pos["tm_bumps_completed"]
+        session_tms[sn] = {
+            lift: get_session_tm(lift, date_str, tm_bumps)
+            for lift in lifts
+        }
+
+    def _get_eff_tm(row):
+        lift = row.get("lift")
+        sn = row.get("session_num")
+        if not lift or not sn or sn not in session_tms:
+            return None
+        return session_tms[sn].get(lift)
+
+    df["effective_tm"] = df.apply(_get_eff_tm, axis=1)
 
     return df
 
@@ -519,8 +526,8 @@ def amrap_tracking(df: pd.DataFrame) -> pd.DataFrame:
     amraps["min_reps"] = amraps.apply(_min_reps, axis=1)
     amraps["reps_over_min"] = amraps["reps"] - amraps["min_reps"]
     amraps["pct_of_tm"] = amraps.apply(
-        lambda r: round(r["weight_kg"] / TRAINING_MAX.get(r["lift"], 1) * 100, 1)
-        if r["lift"] and TRAINING_MAX.get(r["lift"])
+        lambda r: round(r["weight_kg"] / r["effective_tm"] * 100, 1)
+        if r.get("effective_tm") and r["effective_tm"] > 0
         else None,
         axis=1,
     )
@@ -547,6 +554,7 @@ def bbb_compliance(df: pd.DataFrame) -> pd.DataFrame:
         avg_reps=("reps", "mean"),
         min_reps=("reps", "min"),
         has_amrap=("set_type", lambda x: (x == "bbb_amrap").any()),
+        effective_tm=("effective_tm", "first"),
     ).reset_index()
 
     grouped["avg_reps"] = grouped["avg_reps"].round(1)
@@ -557,8 +565,8 @@ def bbb_compliance(df: pd.DataFrame) -> pd.DataFrame:
 
     # % of TM
     grouped["pct_of_tm"] = grouped.apply(
-        lambda r: round(r["weight_kg"] / TRAINING_MAX.get(r["lift"], 1) * 100, 1)
-        if r["lift"] and TRAINING_MAX.get(r["lift"])
+        lambda r: round(r["weight_kg"] / r["effective_tm"] * 100, 1)
+        if r.get("effective_tm") and r["effective_tm"] > 0
         else None,
         axis=1,
     )
@@ -582,6 +590,7 @@ def fsl_compliance(df: pd.DataFrame) -> pd.DataFrame:
         total_reps=("reps", "sum"),
         avg_reps=("reps", "mean"),
         min_reps=("reps", "min"),
+        effective_tm=("effective_tm", "first"),
     ).reset_index()
 
     grouped["avg_reps"] = grouped["avg_reps"].round(1)
@@ -591,8 +600,8 @@ def fsl_compliance(df: pd.DataFrame) -> pd.DataFrame:
     grouped["reps_ok"] = grouped["avg_reps"].between(5, 8)
 
     grouped["pct_of_tm"] = grouped.apply(
-        lambda r: round(r["weight_kg"] / TRAINING_MAX.get(r["lift"], 1) * 100, 1)
-        if r["lift"] and TRAINING_MAX.get(r["lift"])
+        lambda r: round(r["weight_kg"] / r["effective_tm"] * 100, 1)
+        if r.get("effective_tm") and r["effective_tm"] > 0
         else None,
         axis=1,
     )
@@ -648,12 +657,11 @@ def tm_progression(df: pd.DataFrame) -> pd.DataFrame:
         amrap_weight=("weight_kg", "last"),
         amrap_reps=("reps", "last"),
         e1rm=("e1rm", "max"),
+        effective_tm=("effective_tm", "last"),
     ).reset_index()
 
     result["estimated_tm"] = (result["e1rm"] * 0.90).apply(round_to_plate)
-    result["current_tm"] = result["lift"].map(
-        lambda l: TRAINING_MAX.get(l, 0) or 0
-    )
+    result["current_tm"] = result["effective_tm"].fillna(0).astype(float)
 
     return result
 
@@ -792,6 +800,14 @@ def validate_tm(df: pd.DataFrame) -> dict:
     if amraps.empty:
         return {}
 
+    # Get current effective TM per lift from the latest session in the data
+    latest_tms = {}
+    if "effective_tm" in df.columns:
+        for lift in df["lift"].dropna().unique():
+            lift_rows = df[(df["lift"] == lift) & df["effective_tm"].notna()]
+            if not lift_rows.empty:
+                latest_tms[lift] = lift_rows.sort_values("date")["effective_tm"].iloc[-1]
+
     result = {}
     for lift in amraps["lift"].unique():
         lift_amraps = amraps[amraps["lift"] == lift].sort_values("date")
@@ -800,7 +816,7 @@ def validate_tm(df: pd.DataFrame) -> dict:
 
         avg_over = lift_amraps["reps_over_min"].mean()
         latest_e1rm = lift_amraps["e1rm"].iloc[-1]
-        current_tm = TRAINING_MAX.get(lift, 0) or 0
+        current_tm = latest_tms.get(lift) or TRAINING_MAX.get(lift, 0) or 0
         recommended_tm = round_to_plate(latest_e1rm * 0.90)
 
         if avg_over > 5:

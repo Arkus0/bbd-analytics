@@ -29,6 +29,30 @@ TRAINING_MAX = {
     "squat":    80,     # Conservative: no back squat history, based on front sq/zercher
 }
 
+# ── TM History — single source of truth for past + present TMs ───────
+# Each entry: {"from": ISO date, "base_tm": kg, "bumps_applied": int}
+# "bumps_applied" = how many auto-bumps had already occurred when this
+# base was set.  Recalibrations reset the base; automatic bumps stack on top.
+#
+# To add a recalibration: append a new entry with the date it takes effect
+# and bumps_applied = number of bumps completed at that point.
+TM_HISTORY = {
+    "ohp": [
+        {"from": "2026-02-20", "base_tm": 58, "bumps_applied": 0},
+    ],
+    "deadlift": [
+        {"from": "2026-02-20", "base_tm": 140, "bumps_applied": 0},
+    ],
+    "bench": [
+        {"from": "2026-02-20", "base_tm": 76, "bumps_applied": 0},
+        # Recalibrated after 64kg×16 AMRAP on 2026-02-23 → e1RM ~98 → TM ~84
+        {"from": "2026-02-24", "base_tm": 84, "bumps_applied": 0},
+    ],
+    "squat": [
+        {"from": "2026-02-20", "base_tm": 80, "bumps_applied": 0},
+    ],
+}
+
 # TM increment per cycle
 TM_INCREMENT = {
     "ohp":      2,     # Upper body: +2 kg/cycle (smallest: 1kg/side)
@@ -285,6 +309,46 @@ def get_tm(lift: str) -> float | None:
 def round_to_plate(weight: float) -> float:
     """Round weight to nearest 2kg (Juan's smallest increment: 1kg per side)."""
     return round(weight / 2) * 2
+
+
+def get_session_tm(lift: str, session_date: str, tm_bumps: int = 0) -> float:
+    """
+    Get the effective Training Max for a lift at a specific session date.
+
+    Looks up TM_HISTORY to find the correct base TM for that date, then
+    applies automatic bumps on top:
+        effective_tm = base_tm + (tm_bumps - bumps_applied_at_base) × increment
+
+    This is the single source of truth for "what TM was this session
+    planned with".  Use this instead of TRAINING_MAX.get() for any
+    historical or per-session calculation.
+
+    Args:
+        lift: one of "ohp", "deadlift", "bench", "squat"
+        session_date: ISO date string "YYYY-MM-DD"
+        tm_bumps: total automatic bumps completed at this point in the program
+
+    Returns:
+        Effective TM in kg (rounded to plates).
+    """
+    history = TM_HISTORY.get(lift, [])
+    if not history:
+        return TRAINING_MAX.get(lift, 0) or 0
+
+    # Find the entry active at session_date (latest entry <= date)
+    active = history[0]
+    for entry in history:
+        if entry["from"] <= session_date:
+            active = entry
+        else:
+            break
+
+    base = active["base_tm"]
+    bumps_at_base = active.get("bumps_applied", 0)
+    increment = TM_INCREMENT.get(lift, 2)
+    extra_bumps = max(0, tm_bumps - bumps_at_base)
+
+    return round_to_plate(base + extra_bumps * increment)
 
 
 def get_cycle_position(total_sessions: int) -> dict:
