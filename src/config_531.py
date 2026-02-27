@@ -16,7 +16,7 @@ NOTION_531_ANALYTICS_PAGE = os.environ.get(
 )
 
 # ── Physical ─────────────────────────────────────────────────────────
-BODYWEIGHT = 86.0
+from src.config import BODYWEIGHT  # Single source of truth
 PROGRAM_START_531 = "2026-02-20"
 
 # ── Training Maxes (updated each cycle) ──────────────────────────────
@@ -410,13 +410,15 @@ def get_cycle_position(total_sessions: int) -> dict:
 
 def get_effective_tm(lift: str, tm_bumps: int) -> float:
     """
-    Calculate the effective TM for a lift after N bumps from the base TM.
-    Base TM is stored in TRAINING_MAX (set at program start).
-    Each bump adds TM_INCREMENT for that lift.
+    Calculate the effective TM for a lift after N bumps.
+
+    Delegates to get_session_tm() with today's date so that TM_HISTORY
+    recalibrations are always respected. Use this for forward-looking
+    calculations (routine updates, projections). For historical per-session
+    TMs, use get_session_tm() directly with the session date.
     """
-    base = TRAINING_MAX.get(lift, 0) or 0
-    increment = TM_INCREMENT.get(lift, 2)
-    return base + (increment * tm_bumps)
+    from datetime import date
+    return get_session_tm(lift, date.today().isoformat(), tm_bumps)
 
 
 def expected_weights(lift: str, week: int, tm_override: float = None) -> list[dict] | None:

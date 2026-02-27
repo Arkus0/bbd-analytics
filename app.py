@@ -24,7 +24,7 @@ from src.analytics_531 import (
 )
 from src.config_531 import (
     DAY_CONFIG_531, TRAINING_MAX, CYCLE_WEEKS, STRENGTH_STANDARDS_531,
-    BODYWEIGHT as BW_531, PROGRAM_START_531,
+    PROGRAM_START_531,
 )
 from src.analytics import (
     add_derived_columns, global_summary, weekly_breakdown,
@@ -42,7 +42,7 @@ from src.analytics import (
     # Gamification
     gamification_status,
 )
-from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN, NOTION_HALL_OF_TITANS_DB
+from src.config import DAY_CONFIG, MUSCLE_GROUP_COLORS, KEY_LIFTS, KEY_LIFT_IDS, PROGRAM_START, NOTION_TOKEN, NOTION_HALL_OF_TITANS_DB, BODYWEIGHT
 import requests as _requests
 import re as _re
 
@@ -323,8 +323,6 @@ PL = dict(
     template="plotly_dark", paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     font=dict(family="Space Grotesk", color="#e2e8f0"), margin=dict(l=40, r=20, t=40, b=40),
 )
-
-BODYWEIGHT = 86.0  # kg — update from Seguimiento
 
 # ── Data Loading ─────────────────────────────────────────────────────
 @st.cache_data(ttl=120)

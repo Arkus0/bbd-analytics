@@ -126,20 +126,21 @@ def sync_to_notion(df: pd.DataFrame, database_id: str = NOTION_BBD_LOGBOOK_DB) -
 
 
 def _detect_prs(new_df: pd.DataFrame, all_df: pd.DataFrame) -> pd.DataFrame:
-    """Mark PRs in new data based on all historical data."""
+    """Mark PRs in new data based on all historical data. Uses template_id for matching."""
     new_df = new_df.copy()
     new_df["is_pr"] = False
 
-    # Build historical max e1RM per exercise (excluding new data)
+    # Build historical max e1RM per exercise template_id (excluding new data)
     existing = all_df[~all_df["hevy_id"].isin(new_df["hevy_id"].unique())]
-    hist_max = existing.groupby("exercise")["e1rm"].max().to_dict() if not existing.empty else {}
+    key_col = "exercise_template_id" if "exercise_template_id" in existing.columns else "exercise"
+    hist_max = existing.groupby(key_col)["e1rm"].max().to_dict() if not existing.empty else {}
 
     for idx, row in new_df.iterrows():
         if row["e1rm"] > 0:
-            prev_max = hist_max.get(row["exercise"], 0)
+            key = row.get("exercise_template_id", row["exercise"]) if key_col == "exercise_template_id" else row["exercise"]
+            prev_max = hist_max.get(key, 0)
             if row["e1rm"] > prev_max:
                 new_df.loc[idx, "is_pr"] = True
-                # Update running max
-                hist_max[row["exercise"]] = row["e1rm"]
+                hist_max[key] = row["e1rm"]
 
     return new_df
