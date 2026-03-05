@@ -122,6 +122,439 @@ BBB_PCT_PROGRESSION = {
     6: 0.70,  # Advanced only
 }
 
+# ══════════════════════════════════════════════════════════════════════
+# FOREVER 5/3/1 — Leader / Anchor Framework
+# ══════════════════════════════════════════════════════════════════════
+#
+# Structure per block:
+#   [Leader × leader_cycles] + [7th Week Deload] + [Anchor × anchor_cycles] + [7th Week TM Test]
+# Each cycle = 3 weeks. Deload/TM Test = 1 week each.
+# TM bumps after each completed 3-week cycle (leader OR anchor).
+#
+# Pre-plan: current Beyond 5/3/1 macro runs until PLAN_START_SESSION.
+# After that, YEARLY_PLAN takes over.
+
+# How many sessions (completed) before the Forever plan starts.
+# Current macro: 8 sessions done → ~20 more to finish (weeks 3-7 = 5 weeks × 4).
+# Set to 28 = 7 weeks × 4 sessions (full first Beyond macro).
+PLAN_START_SESSION = 28
+
+# ── Supplemental Templates ───────────────────────────────────────────
+# Each template defines how to build the supplemental portion of a workout.
+# "sets_spec" is a list of {reps, pct_source, count} where:
+#   pct_source: "fixed_pct" (of TM), "fsl" (first working set %), "ssl" (second set)
+#   Or a callable week→pct pattern for Forever BBB.
+
+SUPPLEMENTAL_TEMPLATES = {
+    "bbb_forever": {
+        "name": "Forever BBB",
+        "description": "5×10, percentage varies by week (60/50/70 for 3/5/1)",
+        "role": "leader",
+        "sets_per_session": 5,
+        "reps_per_set": 10,
+        # Percentages per week_type (using 3/5/1 ordering):
+        # Week 1 (3s): 60%, Week 2 (5s): 50%, Week 3 (531): 70%
+        "pct_by_week": {1: 0.60, 2: 0.50, 3: 0.70},
+        "pct_source": "fixed_pct",
+    },
+    "bbb_constant": {
+        "name": "Original BBB",
+        "description": "5×10 @ constant 50-55% TM",
+        "role": "leader",
+        "sets_per_session": 5,
+        "reps_per_set": 10,
+        "pct_by_week": {1: 0.50, 2: 0.50, 3: 0.50},
+        "pct_source": "fixed_pct",
+    },
+    "bbb_challenge": {
+        "name": "BBB Challenge",
+        "description": "5×10, pct increases per cycle (50→60→70)",
+        "role": "leader",
+        "sets_per_session": 5,
+        "reps_per_set": 10,
+        # pct escalates by cycle number within the leader phase
+        "pct_by_cycle": {1: 0.50, 2: 0.60},
+        "pct_source": "fixed_pct",
+    },
+    "fsl_5x5": {
+        "name": "FSL 5×5",
+        "description": "5×5 at First Set Last weight",
+        "role": "anchor",
+        "sets_per_session": 5,
+        "reps_per_set": 5,
+        "pct_by_week": {1: None, 2: None, 3: None},  # None = use FSL
+        "pct_source": "fsl",
+    },
+    "widowmaker": {
+        "name": "Widowmaker",
+        "description": "1×20 at First Set Last weight",
+        "role": "anchor",
+        "sets_per_session": 1,
+        "reps_per_set": 20,
+        "pct_by_week": {1: None, 2: None, 3: None},
+        "pct_source": "fsl",
+    },
+    "5x5_531": {
+        "name": "5x5/3/1",
+        "description": "5×5 at the top set weight (85/90/95%)",
+        "role": "leader",
+        "sets_per_session": 5,
+        "reps_per_set": 5,
+        # The 5x5 IS the main work — top set pct varies by week
+        "pct_by_week": {1: 0.85, 2: 0.90, 3: 0.95},
+        "pct_source": "fixed_pct",
+        "replaces_main_work": True,  # No separate 531 sets, 5x5 IS the workout
+    },
+    "5x5_531_anchor": {
+        "name": "5x5/3/1 Anchor",
+        "description": "Higher intensity: 5×3@90%, 5×5@85%, 3×3@95%",
+        "role": "anchor",
+        "sets_per_session": 5,
+        "reps_per_set": None,  # varies by week
+        "week_spec": {
+            1: {"sets": 5, "reps": 3, "pct": 0.90},
+            2: {"sets": 5, "reps": 5, "pct": 0.85},
+            3: {"sets": 3, "reps": 3, "pct": 0.95},
+        },
+        "pct_source": "fixed_pct",
+        "replaces_main_work": True,
+    },
+    "svr2": {
+        "name": "SVR II",
+        "description": "Week 1: Widowmaker, Week 2: BBB, Week 3: SSL 5×5",
+        "role": "leader",
+        "week_spec": {
+            1: {"type": "widowmaker", "sets": 1, "reps": "15-20", "pct_source": "fsl"},
+            2: {"type": "bbb", "sets": 5, "reps": 10, "pct": 0.65, "pct_source": "fixed_pct"},
+            3: {"type": "ssl", "sets": 5, "reps": 5, "pct": 0.85, "pct_source": "fixed_pct"},
+        },
+        "pct_source": "mixed",
+    },
+    "none": {
+        "name": "No supplemental",
+        "description": "Used during 7th week protocol",
+        "role": "deload",
+        "sets_per_session": 0,
+        "reps_per_set": 0,
+        "pct_source": "none",
+    },
+}
+
+# ── Main Work Modes ──────────────────────────────────────────────────
+# How the 3 working sets behave in each phase.
+MAIN_WORK_MODES = {
+    "5s_pro": {
+        "name": "5's Progression",
+        "description": "All sets ×5, no AMRAP. Focus on bar speed.",
+        "amrap": False,
+        "reps_override": 5,  # All working sets are 5 reps
+    },
+    "pr_set": {
+        "name": "PR Set",
+        "description": "Standard 5/3/1 with AMRAP on top set.",
+        "amrap": True,
+        "reps_override": None,
+    },
+    "pr_set_jokers": {
+        "name": "PR Set + Jokers",
+        "description": "AMRAP on top set, then 1-2 joker sets above.",
+        "amrap": True,
+        "reps_override": None,
+        "jokers": True,
+    },
+    "tm_test": {
+        "name": "TM Test",
+        "description": "Work up to TM for 3-5 reps. 70%×5, 80%×5, 90%×5, TM×3-5.",
+        "amrap": False,
+        "custom_sets": [
+            {"pct": 0.70, "reps": 5},
+            {"pct": 0.80, "reps": 5},
+            {"pct": 0.90, "reps": 5},
+            {"pct": 1.00, "reps": 5},  # Target: 3-5 reps
+        ],
+    },
+    "deload": {
+        "name": "Deload",
+        "description": "Light work: 70%×5, 80%×3, 90%×1, TM×1.",
+        "amrap": False,
+        "custom_sets": [
+            {"pct": 0.70, "reps": 5},
+            {"pct": 0.80, "reps": 3},
+            {"pct": 0.90, "reps": 1},
+            {"pct": 1.00, "reps": 1},
+        ],
+    },
+}
+
+# ── Yearly Plan ──────────────────────────────────────────────────────
+# Each block = 2 leader cycles + deload + 1 anchor cycle + TM test = 11 weeks.
+# Block durations:
+#   leader_weeks = leader_cycles × 3
+#   deload_weeks = 1
+#   anchor_weeks = anchor_cycles × 3
+#   tm_test_weeks = 1
+#   total = leader_weeks + 1 + anchor_weeks + 1
+
+YEARLY_PLAN = [
+    {
+        "block": 1,
+        "name": "Base — Forever BBB",
+        "leader_template": "bbb_forever",
+        "leader_main_work": "5s_pro",
+        "leader_cycles": 2,
+        "anchor_template": "fsl_5x5",
+        "anchor_main_work": "pr_set",
+        "anchor_cycles": 1,
+        "tm_pct": 85,
+        "notes": "Establecer el sistema Leader/Anchor. BBB Forever con 60/50/70%.",
+    },
+    {
+        "block": 2,
+        "name": "Empuje — BBB Challenge",
+        "leader_template": "bbb_challenge",
+        "leader_main_work": "5s_pro",
+        "leader_cycles": 2,
+        "anchor_template": "widowmaker",
+        "anchor_main_work": "pr_set",
+        "anchor_cycles": 1,
+        "tm_pct": 85,
+        "notes": "Subir volumen BBB (50→60%). Widowmakers como anchor.",
+    },
+    {
+        "block": 3,
+        "name": "Fuerza — 5x5/3/1",
+        "leader_template": "5x5_531",
+        "leader_main_work": "5s_pro",  # 5x5 replaces main+supplemental
+        "leader_cycles": 2,
+        "anchor_template": "5x5_531_anchor",
+        "anchor_main_work": "5s_pro",
+        "anchor_cycles": 1,
+        "tm_pct": 80,  # Mandatory 80% for 5x5/3/1
+        "notes": "Fuerza pura. Velocidad de barra es ley. TM al 80%.",
+    },
+    {
+        "block": 4,
+        "name": "Variedad — SVR II",
+        "leader_template": "svr2",
+        "leader_main_work": "pr_set",  # SVR II week 1 has PR set
+        "leader_cycles": 2,
+        "anchor_template": "fsl_5x5",
+        "anchor_main_work": "pr_set_jokers",
+        "anchor_cycles": 1,
+        "tm_pct": 85,
+        "notes": "Variedad: Widowmaker/BBB/SSL cada semana. Anchor con jokers.",
+    },
+    {
+        "block": 5,
+        "name": "Cierre — BBB Avanzado",
+        "leader_template": "bbb_forever",
+        "leader_main_work": "5s_pro",
+        "leader_cycles": 2,
+        "anchor_template": "fsl_5x5",
+        "anchor_main_work": "pr_set",
+        "anchor_cycles": 1,
+        "tm_pct": 85,
+        "notes": "Volver al BBB con TMs más altos. Cerrar el año.",
+    },
+]
+
+
+def get_block_weeks(block: dict) -> int:
+    """Total weeks in a block: leader + deload + anchor + TM test."""
+    return block["leader_cycles"] * 3 + 1 + block["anchor_cycles"] * 3 + 1
+
+
+def get_plan_position(total_sessions: int) -> dict:
+    """
+    Calculate position in the Forever yearly plan.
+
+    Returns dict with:
+        phase: "pre_plan" | "leader" | "7th_week_deload" | "anchor" | "7th_week_tm_test"
+        block: block dict from YEARLY_PLAN (or None for pre_plan)
+        block_num: 1-based block number
+        cycle_in_phase: which cycle within leader/anchor (1-based)
+        week_type: 1 (5s), 2 (3s), 3 (531), or 4 (deload/TM test)
+        week_in_block: absolute week within current block (1-based)
+        tm_bumps_total: total TM bumps from plan start
+        supplemental_template: template key from SUPPLEMENTAL_TEMPLATES
+        main_work_mode: mode key from MAIN_WORK_MODES
+    """
+    if total_sessions < PLAN_START_SESSION:
+        # Still in pre-plan (legacy Beyond 5/3/1 macro)
+        legacy = get_cycle_position(total_sessions)
+        return {
+            "phase": "pre_plan",
+            "block": None,
+            "block_num": 0,
+            "cycle_in_phase": legacy.get("mini_cycle"),
+            "week_type": legacy["week_type"],
+            "week_name": legacy["week_name"],
+            "week_in_block": legacy["week_in_macro"],
+            "tm_bumps_total": legacy["tm_bumps_completed"],
+            "supplemental_template": "bbb_constant",
+            "main_work_mode": "pr_set",
+            "macro_num": legacy["macro_num"],
+        }
+
+    # Sessions into the plan
+    plan_sessions = total_sessions - PLAN_START_SESSION
+    plan_weeks = plan_sessions // SESSIONS_PER_WEEK
+
+    # Walk through blocks to find position
+    cumulative_weeks = 0
+    cumulative_bumps = 0
+    # Count bumps from pre-plan (2 bumps per completed Beyond macro)
+    pre_plan_macros = PLAN_START_SESSION // (MACRO_CYCLE_LENGTH * SESSIONS_PER_WEEK)
+    pre_plan_bumps = pre_plan_macros * 2
+    cumulative_bumps = pre_plan_bumps
+
+    for block in YEARLY_PLAN:
+        block_total_weeks = get_block_weeks(block)
+        leader_weeks = block["leader_cycles"] * 3
+        anchor_weeks = block["anchor_cycles"] * 3
+
+        if plan_weeks < cumulative_weeks + block_total_weeks:
+            # We're in this block
+            week_in_block = plan_weeks - cumulative_weeks  # 0-based
+            w = week_in_block
+
+            # Phase breakdown within block:
+            # [0..leader_weeks-1] = leader
+            # [leader_weeks] = 7th week deload
+            # [leader_weeks+1..leader_weeks+anchor_weeks] = anchor
+            # [leader_weeks+1+anchor_weeks] = 7th week TM test
+
+            if w < leader_weeks:
+                # Leader phase
+                cycle_in_leader = w // 3 + 1  # 1 or 2
+                week_in_cycle = w % 3 + 1  # 1, 2, or 3
+                # Bumps from completed leader cycles
+                bumps_in_block = w // 3
+                return {
+                    "phase": "leader",
+                    "block": block,
+                    "block_num": block["block"],
+                    "cycle_in_phase": cycle_in_leader,
+                    "week_type": week_in_cycle,
+                    "week_name": CYCLE_WEEKS[week_in_cycle]["name"],
+                    "week_in_block": w + 1,
+                    "tm_bumps_total": cumulative_bumps + bumps_in_block,
+                    "supplemental_template": block["leader_template"],
+                    "main_work_mode": block["leader_main_work"],
+                }
+
+            elif w == leader_weeks:
+                # 7th week deload (between leader and anchor)
+                bumps_in_block = block["leader_cycles"]
+                return {
+                    "phase": "7th_week_deload",
+                    "block": block,
+                    "block_num": block["block"],
+                    "cycle_in_phase": None,
+                    "week_type": 4,
+                    "week_name": "Deload (7th Week)",
+                    "week_in_block": w + 1,
+                    "tm_bumps_total": cumulative_bumps + bumps_in_block,
+                    "supplemental_template": "none",
+                    "main_work_mode": "deload",
+                }
+
+            elif w < leader_weeks + 1 + anchor_weeks:
+                # Anchor phase
+                anchor_offset = w - leader_weeks - 1
+                cycle_in_anchor = anchor_offset // 3 + 1
+                week_in_cycle = anchor_offset % 3 + 1
+                bumps_in_block = block["leader_cycles"] + (anchor_offset // 3)
+                return {
+                    "phase": "anchor",
+                    "block": block,
+                    "block_num": block["block"],
+                    "cycle_in_phase": cycle_in_anchor,
+                    "week_type": week_in_cycle,
+                    "week_name": CYCLE_WEEKS[week_in_cycle]["name"],
+                    "week_in_block": w + 1,
+                    "tm_bumps_total": cumulative_bumps + bumps_in_block,
+                    "supplemental_template": block["anchor_template"],
+                    "main_work_mode": block["anchor_main_work"],
+                }
+
+            else:
+                # 7th week TM test (after anchor)
+                bumps_in_block = block["leader_cycles"] + block["anchor_cycles"]
+                return {
+                    "phase": "7th_week_tm_test",
+                    "block": block,
+                    "block_num": block["block"],
+                    "cycle_in_phase": None,
+                    "week_type": 4,
+                    "week_name": "TM Test (7th Week)",
+                    "week_in_block": w + 1,
+                    "tm_bumps_total": cumulative_bumps + bumps_in_block,
+                    "supplemental_template": "none",
+                    "main_work_mode": "tm_test",
+                }
+
+        # Move to next block
+        # Count all TM bumps in this block
+        bumps_this_block = block["leader_cycles"] + block["anchor_cycles"]
+        cumulative_bumps += bumps_this_block
+        cumulative_weeks += block_total_weeks
+
+    # Past all planned blocks — repeat last block
+    last_block = YEARLY_PLAN[-1]
+    return {
+        "phase": "leader",
+        "block": last_block,
+        "block_num": last_block["block"],
+        "cycle_in_phase": 1,
+        "week_type": 1,
+        "week_name": "Semana 5s",
+        "week_in_block": 1,
+        "tm_bumps_total": cumulative_bumps,
+        "supplemental_template": last_block["leader_template"],
+        "main_work_mode": last_block["leader_main_work"],
+    }
+
+
+def get_supplemental_pct(template_key: str, week_type: int, cycle_in_phase: int = 1,
+                          lift: str = None, tm: float = None) -> float | None:
+    """
+    Get the supplemental percentage of TM for a given template, week, and cycle.
+
+    Returns:
+        Float percentage (0.0-1.0), or None if FSL (caller must compute from first working set).
+    """
+    tmpl = SUPPLEMENTAL_TEMPLATES.get(template_key, {})
+    pct_source = tmpl.get("pct_source", "none")
+
+    if pct_source == "none":
+        return None
+    if pct_source == "fsl":
+        return None  # Caller computes from CYCLE_WEEKS first set pct
+
+    if pct_source == "mixed":
+        # SVR II etc: check week_spec
+        ws = tmpl.get("week_spec", {}).get(week_type, {})
+        if ws.get("pct_source") == "fsl":
+            return None
+        return ws.get("pct", 0.50)
+
+    # fixed_pct
+    if "pct_by_cycle" in tmpl:
+        cycle_key = min(cycle_in_phase, max(tmpl["pct_by_cycle"].keys()))
+        return tmpl["pct_by_cycle"].get(cycle_key, 0.50)
+
+    pct_map = tmpl.get("pct_by_week", {})
+    return pct_map.get(week_type, 0.50)
+
+
+def get_fsl_pct(week_type: int) -> float:
+    """Get the First Set Last percentage for a given week type."""
+    # FSL = first working set percentage
+    week_cfg = CYCLE_WEEKS.get(week_type, CYCLE_WEEKS[1])
+    return week_cfg["sets"][0]["pct"]
+
+
 # ── Day Configuration ────────────────────────────────────────────────
 # Maps BBB day number → main lift + metadata
 # Day order matches Juan's Hevy routine setup
