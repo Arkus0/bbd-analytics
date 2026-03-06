@@ -857,6 +857,7 @@ with st.sidebar:
             "🔍 Sustituciones",
             "📅 Calendario",
             "🗓️ Vista Anual",
+            "🗺️ Plan Forever",
         ], label_visibility="collapsed")
     else:
         page = st.radio("Sección", [
@@ -1519,6 +1520,197 @@ if is_531:
                     })
             if bump_points:
                 st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # 🗺️ PLAN FOREVER
+    # ══════════════════════════════════════════════════════════════════════
+    elif page == "🗺️ Plan Forever":
+        from src.config_531 import (
+            get_plan_position, YEARLY_PLAN, get_block_weeks,
+            SUPPLEMENTAL_TEMPLATES, MAIN_WORK_MODES,
+            PLAN_START_SESSION, SESSIONS_PER_WEEK,
+        )
+
+        _sf_header("Plan Anual — Forever 5/3/1", "🗺️")
+
+        total_sessions = df_531["hevy_id"].nunique() if not df_531.empty else 0
+        pos = get_plan_position(total_sessions)
+        phase = pos.get("phase", "pre_plan")
+
+        # ── Current Position Card ──
+        if phase == "pre_plan":
+            sessions_left = PLAN_START_SESSION - total_sessions
+            weeks_left = sessions_left // SESSIONS_PER_WEEK
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,#1e293b,#334155);padding:20px;border-radius:12px;border-left:4px solid #f59e0b;margin-bottom:20px;">'
+                f'<div style="color:#f59e0b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Pre-Plan · Beyond 5/3/1</div>'
+                f'<div style="color:#f1f5f9;font-size:22px;font-weight:700;margin-top:6px;">{pos.get("week_name","?")} · Macro {pos.get("macro_num",1)}</div>'
+                f'<div style="color:#94a3b8;font-size:14px;margin-top:8px;">'
+                f'{total_sessions} sesiones completadas · {sessions_left} restantes para el plan Forever ({weeks_left} semanas)'
+                f'</div></div>', unsafe_allow_html=True
+            )
+        else:
+            block = pos.get("block", {})
+            block_name = block.get("name", "?") if block else "?"
+            block_num = pos.get("block_num", 0)
+            supp_key = pos.get("supplemental_template", "?")
+            main_key = pos.get("main_work_mode", "?")
+            supp_tmpl = SUPPLEMENTAL_TEMPLATES.get(supp_key, {})
+            main_mode = MAIN_WORK_MODES.get(main_key, {})
+
+            phase_colors = {
+                "leader": ("#dc2626", "Leader"),
+                "anchor": ("#2563eb", "Anchor"),
+                "7th_week_deload": ("#f59e0b", "7th Week Deload"),
+                "7th_week_tm_test": ("#8b5cf6", "7th Week TM Test"),
+            }
+            color, phase_label = phase_colors.get(phase, ("#64748b", phase))
+
+            cycle_str = f" · Ciclo {pos.get('cycle_in_phase', '')}" if pos.get("cycle_in_phase") else ""
+
+            st.markdown(
+                f'<div style="background:linear-gradient(135deg,#1e293b,#334155);padding:20px;border-radius:12px;border-left:4px solid {color};margin-bottom:20px;">'
+                f'<div style="color:{color};font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">Bloque {block_num} · {phase_label}{cycle_str}</div>'
+                f'<div style="color:#f1f5f9;font-size:22px;font-weight:700;margin-top:6px;">{block_name}</div>'
+                f'<div style="color:#94a3b8;font-size:14px;margin-top:8px;">'
+                f'{pos.get("week_name","?")} · Semana {pos.get("week_in_block","?")} del bloque · TM bumps: {pos.get("tm_bumps_total",0)}'
+                f'</div>'
+                f'<div style="color:#cbd5e1;font-size:13px;margin-top:12px;display:flex;gap:16px;">'
+                f'<span>🏋️ {supp_tmpl.get("name", supp_key)}</span>'
+                f'<span>💪 {main_mode.get("name", main_key)}</span>'
+                f'<span>📊 TM {block.get("tm_pct", 85) if block else 85}%</span>'
+                f'</div></div>', unsafe_allow_html=True
+            )
+
+        st.divider()
+
+        # ── Block Progress Bar ──
+        st.markdown("### 📊 Progreso del plan")
+        cumulative = 0
+        for block in YEARLY_PLAN:
+            weeks = get_block_weeks(block)
+            sessions_in_block = weeks * SESSIONS_PER_WEEK
+            block_start = PLAN_START_SESSION + cumulative
+            block_end = block_start + sessions_in_block
+
+            if total_sessions < PLAN_START_SESSION:
+                progress = 0.0
+                status_icon = "⬜"
+            elif total_sessions >= block_end:
+                progress = 1.0
+                status_icon = "✅"
+            elif total_sessions >= block_start:
+                progress = (total_sessions - block_start) / sessions_in_block
+                status_icon = "▶️"
+            else:
+                progress = 0.0
+                status_icon = "⬜"
+
+            lt = SUPPLEMENTAL_TEMPLATES.get(block["leader_template"], {})
+            at = SUPPLEMENTAL_TEMPLATES.get(block["anchor_template"], {})
+            leader_main = MAIN_WORK_MODES.get(block["leader_main_work"], {})
+            anchor_main = MAIN_WORK_MODES.get(block["anchor_main_work"], {})
+
+            bar_color = "#dc2626" if progress > 0 and progress < 1 else "#22c55e" if progress == 1 else "#334155"
+            pct_display = int(progress * 100)
+
+            st.markdown(
+                f'<div style="background:#1e293b;border-radius:10px;padding:16px;margin-bottom:12px;">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                f'<div>'
+                f'<span style="font-size:16px;font-weight:700;color:#f1f5f9;">{status_icon} Bloque {block["block"]}: {block["name"]}</span>'
+                f'<span style="color:#64748b;font-size:12px;margin-left:12px;">{weeks} semanas · TM {block["tm_pct"]}%</span>'
+                f'</div>'
+                f'<span style="color:{bar_color};font-weight:600;">{pct_display}%</span>'
+                f'</div>'
+                f'<div style="background:#0f172a;height:6px;border-radius:3px;margin-top:8px;">'
+                f'<div style="background:{bar_color};height:6px;border-radius:3px;width:{pct_display}%;"></div>'
+                f'</div>'
+                f'<div style="color:#94a3b8;font-size:12px;margin-top:8px;display:flex;gap:20px;">'
+                f'<span>Leader: {lt.get("name","?")} + {leader_main.get("name","?")}</span>'
+                f'<span>Anchor: {at.get("name","?")} + {anchor_main.get("name","?")}</span>'
+                f'</div>'
+                f'</div>', unsafe_allow_html=True
+            )
+
+            cumulative += sessions_in_block
+
+        st.divider()
+
+        # ── Block Detail Cards ──
+        st.markdown("### 📋 Detalle por bloque")
+
+        for block in YEARLY_PLAN:
+            lt = SUPPLEMENTAL_TEMPLATES.get(block["leader_template"], {})
+            at = SUPPLEMENTAL_TEMPLATES.get(block["anchor_template"], {})
+            weeks = get_block_weeks(block)
+            leader_weeks = block["leader_cycles"] * 3
+            anchor_weeks = block["anchor_cycles"] * 3
+
+            with st.expander(f"Bloque {block['block']}: {block['name']} ({weeks} semanas)"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"**🔴 Leader** ({leader_weeks} semanas)")
+                    st.markdown(f"Template: **{lt.get('name', '?')}**")
+                    st.markdown(f"Main work: **{block['leader_main_work']}**")
+                    if "pct_by_week" in lt:
+                        pcts = lt["pct_by_week"]
+                        pct_str = " / ".join(f"{v*100:.0f}%" if v else "FSL" for v in pcts.values())
+                        st.markdown(f"Supp %: {pct_str}")
+                    if "pct_by_cycle" in lt:
+                        pcts = lt["pct_by_cycle"]
+                        pct_str = " → ".join(f"{v*100:.0f}%" for v in pcts.values())
+                        st.markdown(f"Progresión: {pct_str}")
+                    st.caption(f"{lt.get('sets_per_session', '?')}×{lt.get('reps_per_set', '?')} por sesión")
+
+                with col2:
+                    st.markdown(f"**🔵 Anchor** ({anchor_weeks} semanas)")
+                    st.markdown(f"Template: **{at.get('name', '?')}**")
+                    st.markdown(f"Main work: **{block['anchor_main_work']}**")
+                    if "pct_by_week" in at:
+                        pcts = at["pct_by_week"]
+                        pct_str = " / ".join(f"{v*100:.0f}%" if v else "FSL" for v in pcts.values())
+                        st.markdown(f"Supp %: {pct_str}")
+                    st.caption(f"{at.get('sets_per_session', '?')}×{at.get('reps_per_set', '?')} por sesión")
+
+                st.markdown(f"TM: **{block['tm_pct']}%** · +1 deload · +1 TM test")
+                if block.get("notes"):
+                    st.caption(block["notes"])
+
+        st.divider()
+
+        # ── TM Projection Table ──
+        st.markdown("### 📈 Proyección de TMs")
+        from src.config_531 import get_effective_tm
+        rows = []
+        cumul_bumps = 0
+        # Pre-plan bumps
+        pre_macros = PLAN_START_SESSION // (7 * SESSIONS_PER_WEEK)
+        cumul_bumps = pre_macros * 2
+
+        rows.append({
+            "Momento": "Inicio plan",
+            "Bumps": cumul_bumps,
+            "OHP": f"{get_effective_tm('ohp', cumul_bumps):.0f} kg",
+            "DL": f"{get_effective_tm('deadlift', cumul_bumps):.0f} kg",
+            "Bench": f"{get_effective_tm('bench', cumul_bumps):.0f} kg",
+            "Squat": f"{get_effective_tm('squat', cumul_bumps):.0f} kg",
+        })
+
+        for block in YEARLY_PLAN:
+            bumps_in_block = block["leader_cycles"] + block["anchor_cycles"]
+            cumul_bumps += bumps_in_block
+            rows.append({
+                "Momento": f"Fin Bloque {block['block']}",
+                "Bumps": cumul_bumps,
+                "OHP": f"{get_effective_tm('ohp', cumul_bumps):.0f} kg",
+                "DL": f"{get_effective_tm('deadlift', cumul_bumps):.0f} kg",
+                "Bench": f"{get_effective_tm('bench', cumul_bumps):.0f} kg",
+                "Squat": f"{get_effective_tm('squat', cumul_bumps):.0f} kg",
+            })
+
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.caption("Proyección asumiendo todos los TM bumps se aplican. Los TM tests pueden bajar estos valores.")
 
     # ══════════════════════════════════════════════════════════════════════
     # 🧠 INTELIGENCIA 531
