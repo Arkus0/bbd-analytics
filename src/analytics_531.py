@@ -36,6 +36,14 @@ from src.config_531 import (
     expected_weights,
     MACRO_CYCLE_LENGTH,
     WORKING_BLOCK_LENGTH,
+    # Forever framework
+    get_plan_position,
+    get_supplemental_pct,
+    get_fsl_pct,
+    SUPPLEMENTAL_TEMPLATES,
+    MAIN_WORK_MODES,
+    PLAN_START_SESSION,
+    SESSIONS_PER_WEEK,
 )
 
 
@@ -1152,43 +1160,121 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
 # HEVY ROUTINE AUTO-UPDATER
 # ═════════════════════════════════════════════════════════════════════
 
-def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bumps: int) -> list:
+def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bumps: int,
+                            plan_pos: dict | None = None) -> list:
     """
-    Build the full exercise list for a Hevy routine with correct weights
-    for the given week/cycle, using effective TM after bumps.
+    Build the full exercise list for a Hevy routine with correct weights.
+
+    If plan_pos is provided (from get_plan_position), uses the Forever
+    framework (Leader/Anchor/7th Week). Otherwise falls back to legacy
+    Beyond 5/3/1 BBB behavior for backwards compatibility.
     """
     day_cfg = DAY_CONFIG_531.get(day_num, {})
     lift = day_cfg.get("main_lift")
     tm = get_effective_tm(lift, tm_bumps)
     tid = MAIN_LIFT_TIDS.get(lift)
-    week_cfg = CYCLE_WEEKS.get(week_type, CYCLE_WEEKS[1])
 
     if not tm or not tid:
         return []
 
+    # Resolve template and main work mode
+    if plan_pos and plan_pos.get("phase") != "pre_plan":
+        supp_key = plan_pos.get("supplemental_template", "bbb_constant")
+        main_mode_key = plan_pos.get("main_work_mode", "pr_set")
+        cycle_in_phase = plan_pos.get("cycle_in_phase", 1) or 1
+    else:
+        # Legacy: always BBB + PR set
+        supp_key = "bbb_constant"
+        main_mode_key = "pr_set"
+        cycle_in_phase = 1
+
+    supp_tmpl = SUPPLEMENTAL_TEMPLATES.get(supp_key, {})
+    main_mode = MAIN_WORK_MODES.get(main_mode_key, MAIN_WORK_MODES["pr_set"])
+
     # ── Main lift sets ──
     main_sets = []
 
-    # Warmup: 40%, 50%, 60%
-    for pct in [0.40, 0.50, 0.60]:
+    # Check if supplemental replaces main work entirely (5x5/3/1)
+    replaces_main = supp_tmpl.get("replaces_main_work", False)
+
+    if replaces_main:
+        # Templates like 5x5/3/1: warmup → 5x5 at one percentage, no separate 531 sets
+        for pct in [0.40, 0.50, 0.60]:
+            w = round_to_plate(tm * pct)
+            main_sets.append({"type": "warmup", "weight_kg": w, "reps": 5})
+
+        # Get the week-specific spec
+        if "week_spec" in supp_tmpl:
+            ws = supp_tmpl["week_spec"].get(week_type, supp_tmpl["week_spec"].get(1, {}))
+            n_sets = ws.get("sets", 5)
+            reps = ws.get("reps", 5)
+            pct = ws.get("pct", 0.85)
+        else:
+            pct_map = supp_tmpl.get("pct_by_week", {})
+            pct = pct_map.get(week_type, 0.85)
+            n_sets = supp_tmpl.get("sets_per_session", 5)
+            reps = supp_tmpl.get("reps_per_set", 5)
+
         w = round_to_plate(tm * pct)
-        main_sets.append({"type": "warmup", "weight_kg": w, "reps": 5})
+        for _ in range(n_sets):
+            main_sets.append({"type": "normal", "weight_kg": w, "reps": reps})
 
-    # Working 531 sets
-    for s in week_cfg["sets"]:
-        w = round_to_plate(tm * s["pct"])
-        reps = s["reps"]
-        # AMRAP shows as the minimum reps target in routine
-        if isinstance(reps, str):
-            reps = int(reps.replace("+", ""))
-        main_sets.append({"type": "normal", "weight_kg": w, "reps": reps})
+    else:
+        # Standard flow: warmup → working 531 sets → supplemental
 
-    # BBB 5×10
-    bbb_cycle_key = min(macro_num, max(BBB_PCT_PROGRESSION.keys()))
-    bbb_pct = BBB_PCT_PROGRESSION.get(bbb_cycle_key, 0.50)
-    bbb_w = round_to_plate(tm * bbb_pct)
-    for _ in range(5):
-        main_sets.append({"type": "normal", "weight_kg": bbb_w, "reps": 10})
+        # -- Warmup --
+        for pct in [0.40, 0.50, 0.60]:
+            w = round_to_plate(tm * pct)
+            main_sets.append({"type": "warmup", "weight_kg": w, "reps": 5})
+
+        # -- Working sets (depends on main_work_mode) --
+        if "custom_sets" in main_mode:
+            # TM Test / Deload: use custom set structure
+            for s in main_mode["custom_sets"]:
+                w = round_to_plate(tm * s["pct"])
+                main_sets.append({"type": "normal", "weight_kg": w, "reps": s["reps"]})
+        else:
+            # Standard 531 working sets
+            week_cfg = CYCLE_WEEKS.get(week_type, CYCLE_WEEKS[1])
+            reps_override = main_mode.get("reps_override")  # 5's PRO = 5
+            for s in week_cfg["sets"]:
+                w = round_to_plate(tm * s["pct"])
+                reps = s["reps"]
+                if reps_override:
+                    reps = reps_override
+                elif isinstance(reps, str):
+                    # AMRAP: show minimum reps in routine
+                    reps = int(reps.replace("+", ""))
+                main_sets.append({"type": "normal", "weight_kg": w, "reps": reps})
+
+        # -- Supplemental sets --
+        if supp_key != "none" and supp_tmpl.get("sets_per_session", 0) > 0:
+            # Resolve supplemental percentage
+            supp_pct = get_supplemental_pct(supp_key, week_type, cycle_in_phase, lift, tm)
+
+            if supp_pct is None:
+                # FSL/Widowmaker: use first working set percentage
+                supp_pct = get_fsl_pct(week_type)
+
+            supp_w = round_to_plate(tm * supp_pct)
+
+            # Handle SVR II and other mixed templates
+            if supp_tmpl.get("pct_source") == "mixed" and "week_spec" in supp_tmpl:
+                ws = supp_tmpl["week_spec"].get(week_type, {})
+                n_sets = ws.get("sets", 5)
+                reps = ws.get("reps", 10)
+                if isinstance(reps, str):
+                    reps = 20  # "15-20" → show 20 as target
+                if ws.get("pct_source") == "fsl":
+                    supp_w = round_to_plate(tm * get_fsl_pct(week_type))
+                elif "pct" in ws:
+                    supp_w = round_to_plate(tm * ws["pct"])
+            else:
+                n_sets = supp_tmpl.get("sets_per_session", 5)
+                reps = supp_tmpl.get("reps_per_set", 10)
+
+            for _ in range(n_sets):
+                main_sets.append({"type": "normal", "weight_kg": supp_w, "reps": reps})
 
     # Rest time: longer for DL/Squat
     rest = 180 if lift in ("deadlift", "squat") else 120
@@ -1196,17 +1282,27 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
     exercises = [{"exercise_template_id": tid, "rest_seconds": rest, "sets": main_sets}]
 
     # ── Accessories (static templates from config) ──
-    accessories = DAY_ACCESSORIES.get(day_num, [])
-    exercises.extend(accessories)
+    # Reduce accessories during deload/TM test
+    phase = plan_pos.get("phase", "") if plan_pos else ""
+    if phase in ("7th_week_deload", "7th_week_tm_test"):
+        # 7th Week: minimal accessories or skip entirely
+        pass
+    else:
+        accessories = DAY_ACCESSORIES.get(day_num, [])
+        exercises.extend(accessories)
 
     return exercises
 
 
 def update_hevy_routines(df: pd.DataFrame) -> dict:
     """
-    Update all 4 BBB routines in Hevy with correct weights for the current
-    week/cycle using Beyond 5/3/1 structure and effective TM.
-    Returns {day_num: {status, week, macro, lift, tm}}.
+    Update all 4 routines in Hevy with correct weights for the current
+    week/cycle using Forever 5/3/1 framework.
+
+    Uses get_plan_position() to determine the active template (Leader/Anchor/
+    7th Week Deload/TM Test) and builds routines accordingly.
+
+    Returns {day_num: {status, phase, week, block, lift, tm, template}}.
     """
     import requests
     import time
@@ -1219,26 +1315,45 @@ def update_hevy_routines(df: pd.DataFrame) -> dict:
         "Content-Type": "application/json",
     }
 
-    # Determine current position
+    # Determine current position using Forever framework
     if df.empty:
         total_sessions = 0
     else:
         total_sessions = df["hevy_id"].nunique()
 
-    pos = get_cycle_position(total_sessions)
-    week_type = pos["week_type"]
-    macro_num = pos["macro_num"]
-    tm_bumps = pos["tm_bumps_completed"]
+    plan_pos = get_plan_position(total_sessions)
+    week_type = plan_pos.get("week_type", 1)
+    tm_bumps = plan_pos.get("tm_bumps_total", 0)
+    phase = plan_pos.get("phase", "pre_plan")
+    block = plan_pos.get("block")
+    block_name = block["name"] if block else "Pre-plan"
+
+    # For legacy pre-plan, also get macro_num for backwards compat
+    macro_num = plan_pos.get("macro_num", 1) if phase == "pre_plan" else (
+        plan_pos.get("block_num", 1)
+    )
 
     results = {}
 
     for day_num, routine_id in DAY_ROUTINE_MAP.items():
         day_cfg = DAY_CONFIG_531.get(day_num, {})
         lift = day_cfg.get("main_lift", "?")
-        title = day_cfg.get("name", f"BBB día {day_num}")
         effective_tm = get_effective_tm(lift, tm_bumps)
 
-        exercises = build_routine_exercises(day_num, week_type, macro_num, tm_bumps)
+        # Build title with phase info
+        base_title = day_cfg.get("name", f"531 día {day_num}")
+        phase_tag = {
+            "pre_plan": "",
+            "leader": "L",
+            "7th_week_deload": "DL",
+            "anchor": "A",
+            "7th_week_tm_test": "TM",
+        }.get(phase, "")
+        title = f"{base_title} [{phase_tag}]" if phase_tag else base_title
+
+        exercises = build_routine_exercises(
+            day_num, week_type, macro_num, tm_bumps, plan_pos=plan_pos
+        )
         if not exercises:
             results[day_num] = {"status": "skipped", "reason": "no TM"}
             continue
@@ -1260,11 +1375,13 @@ def update_hevy_routines(df: pd.DataFrame) -> dict:
                 results[day_num] = {
                     "status": "updated",
                     "lift": lift,
-                    "week": pos["week_name"],
-                    "macro": macro_num,
+                    "phase": phase,
+                    "week": plan_pos.get("week_name", "?"),
+                    "block": block_name,
                     "tm": effective_tm,
                     "tm_bumps": tm_bumps,
-                    "week_in_macro": pos["week_in_macro"],
+                    "template": plan_pos.get("supplemental_template", "?"),
+                    "main_work": plan_pos.get("main_work_mode", "?"),
                 }
             else:
                 results[day_num] = {"status": "error", "code": r.status_code, "msg": r.text[:200]}
