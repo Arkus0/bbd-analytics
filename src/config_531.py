@@ -135,9 +135,10 @@ BBB_PCT_PROGRESSION = {
 # After that, YEARLY_PLAN takes over.
 
 # How many sessions (completed) before the Forever plan starts.
-# Current macro: 8 sessions done → ~20 more to finish (weeks 3-7 = 5 weeks × 4).
-# Set to 28 = 7 weeks × 4 sessions (full first Beyond macro).
-PLAN_START_SESSION = 28
+# Originally 28 (full Beyond macro). Adjusted to 12 = current mini-cycle 1 (3 weeks).
+# Juan transitions early: BBB supplemental too light at current TMs, and mixing
+# PR sets + jokers in leader phase defeats periodization purpose.
+PLAN_START_SESSION = 12
 
 # ── Supplemental Templates ───────────────────────────────────────────
 # Each template defines how to build the supplemental portion of a workout.
@@ -472,9 +473,9 @@ def get_plan_position(total_sessions: int) -> dict:
     # Walk through blocks to find position
     cumulative_weeks = 0
     cumulative_bumps = 0
-    # Count bumps from pre-plan (2 bumps per completed Beyond macro)
-    pre_plan_macros = PLAN_START_SESSION // (MACRO_CYCLE_LENGTH * SESSIONS_PER_WEEK)
-    pre_plan_bumps = pre_plan_macros * 2
+    # Count bumps from pre-plan: 1 bump per completed 3-week mini-cycle
+    pre_plan_mini_cycles = PLAN_START_SESSION // (3 * SESSIONS_PER_WEEK)
+    pre_plan_bumps = pre_plan_mini_cycles
     cumulative_bumps = pre_plan_bumps
 
     for block in YEARLY_PLAN:
