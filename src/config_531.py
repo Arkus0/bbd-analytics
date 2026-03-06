@@ -148,27 +148,29 @@ PLAN_START_SESSION = 28
 SUPPLEMENTAL_TEMPLATES = {
     "bbb_forever": {
         "name": "Forever BBB",
-        "description": "5×10, percentage varies by week (60/50/70 for 3/5/1)",
+        "description": "5×10, percentage varies by week (60/50/70 for 3/5/1). Book p48-49.",
         "role": "leader",
         "sets_per_session": 5,
         "reps_per_set": 10,
-        # Percentages per week_type (using 3/5/1 ordering):
+        # Book: Forever BBB option 1 (beginner/intermediate)
         # Week 1 (5s): 60%, Week 2 (3s): 50%, Week 3 (531): 70%
         "pct_by_week": {1: 0.60, 2: 0.50, 3: 0.70},
         "pct_source": "fixed_pct",
     },
-    "bbb_forever_heavy": {
-        "name": "Forever BBB (Heavy)",
-        "description": "5×10, higher pcts for experienced lifters (65/55/75)",
+    "bbb_fsl": {
+        "name": "BBB, FSL",
+        "description": "5×10 at FSL percentages (65/70/75). Heaviest BBB variant. Book p53-54.",
         "role": "leader",
         "sets_per_session": 5,
         "reps_per_set": 10,
-        "pct_by_week": {1: 0.65, 2: 0.55, 3: 0.75},
+        # Book: BBB FSL uses first working set % as BBB weight
+        # 5s week FSL=65%, 3s week FSL=70%, 531 week FSL=75%
+        "pct_by_week": {1: 0.65, 2: 0.70, 3: 0.75},
         "pct_source": "fixed_pct",
     },
     "bbb_constant": {
         "name": "Original BBB",
-        "description": "5×10 @ constant 50-55% TM",
+        "description": "5×10 @ constant 50-55% TM. Book p49-50.",
         "role": "leader",
         "sets_per_session": 5,
         "reps_per_set": 10,
@@ -177,17 +179,17 @@ SUPPLEMENTAL_TEMPLATES = {
     },
     "bbb_challenge": {
         "name": "BBB Challenge",
-        "description": "5×10, aggressive pct increase per cycle (60→70)",
+        "description": "5×10, pct increases per cycle (50→60→70). Book p52-53.",
         "role": "leader",
         "sets_per_session": 5,
         "reps_per_set": 10,
-        # Aggressive: starts at 60%, pushes to 70% in cycle 2
-        "pct_by_cycle": {1: 0.60, 2: 0.70},
+        # Book: cycle 1=50%, cycle 2=60%, cycle 3=70%
+        "pct_by_cycle": {1: 0.50, 2: 0.60},
         "pct_source": "fixed_pct",
     },
     "fsl_5x5": {
         "name": "FSL 5×5",
-        "description": "5×5 at First Set Last weight",
+        "description": "5×5 at First Set Last weight. Book p58-63.",
         "role": "anchor",
         "sets_per_session": 5,
         "reps_per_set": 5,
@@ -196,8 +198,8 @@ SUPPLEMENTAL_TEMPLATES = {
     },
     "ssl_5x5": {
         "name": "SSL 5×5",
-        "description": "5×5 at Second Set Last weight (heavier than FSL)",
-        "role": "anchor",
+        "description": "5×5 at Second Set Last weight. Book p85-86 (Volume & Strength).",
+        "role": "leader",  # SSL appears as leader supplemental, not anchor for BBB
         "sets_per_session": 5,
         "reps_per_set": 5,
         # SSL = second working set percentage: 75%/80%/85%
@@ -206,7 +208,7 @@ SUPPLEMENTAL_TEMPLATES = {
     },
     "widowmaker": {
         "name": "Widowmaker",
-        "description": "1×20 at First Set Last weight",
+        "description": "1×20 at First Set Last weight. Book p66-70.",
         "role": "anchor",
         "sets_per_session": 1,
         "reps_per_set": 20,
@@ -316,18 +318,20 @@ MAIN_WORK_MODES = {
 
 YEARLY_PLAN = [
     {
+        # Book combo (p74, Program 4): Leader BBB → Anchor PR Set + Jokers + FSL
         "block": 1,
         "name": "Base — Forever BBB",
         "leader_template": "bbb_forever",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
-        "anchor_template": "ssl_5x5",
+        "anchor_template": "fsl_5x5",
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
-        "tm_pct": 90,
-        "notes": "Establecer Leader/Anchor. BBB Forever 60/50/70%. Anchor SSL (heavier than FSL) + Jokers.",
+        "tm_pct": 85,  # Book p45: 85% TM for BBB
+        "notes": "Book p48-49. Forever BBB 60/50/70%. Anchor PR Set+Jokers+FSL (p74 Program 4).",
     },
     {
+        # Book combo (p52-53): BBB Challenge → Original 5/3/1 or PR Set+FSL
         "block": 2,
         "name": "Empuje — BBB Challenge",
         "leader_template": "bbb_challenge",
@@ -336,10 +340,11 @@ YEARLY_PLAN = [
         "anchor_template": "fsl_5x5",
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
-        "tm_pct": 85,
-        "notes": "BBB Challenge agresivo: 60%→70%. Anchor con PR Set + Jokers + FSL. TM 85% por el volumen alto.",
+        "tm_pct": 85,  # Book p52: BBB Challenge uses 85% TM (90% max for beginners)
+        "notes": "Book p52-53. Challenge: cycle1=50%, cycle2=60%. Anchor PR Set+Jokers+FSL.",
     },
     {
+        # Book (p87-95): 5x5/3/1 leader → 5x5/3/1 Anchor
         "block": 3,
         "name": "Fuerza — 5x5/3/1",
         "leader_template": "5x5_531",
@@ -348,32 +353,34 @@ YEARLY_PLAN = [
         "anchor_template": "5x5_531_anchor",
         "anchor_main_work": "5s_pro",
         "anchor_cycles": 1,
-        "tm_pct": 80,  # Mandatory 80% for 5x5/3/1 — no negotiation
-        "notes": "Fuerza pura. 25 reps pesadas por sesión. TM 80% obligatorio (Wendler). Anchor sube a 5×3@90%, 3×3@95%.",
+        "tm_pct": 80,  # Book p88: 80% TM mandatory, no higher
+        "notes": "Book p87-95. 5x5 at 85/90/95% TM. Anchor 5x3@90%,5x5@85%,3x3@95%. TM 80% mandatory.",
     },
     {
+        # Book (p77-80): SVR II leader → standard FSL anchor
         "block": 4,
         "name": "Variedad — SVR II",
         "leader_template": "svr2",
         "leader_main_work": "pr_set",  # SVR II week 1 has PR set
         "leader_cycles": 2,
-        "anchor_template": "ssl_5x5",
+        "anchor_template": "fsl_5x5",
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
-        "tm_pct": 85,
-        "notes": "SVR II: Widowmaker/BBB@65%/SSL@85% rotando. Anchor SSL + Jokers para máxima intensidad.",
+        "tm_pct": 85,  # Book p77: 85% TM
+        "notes": "Book p77-80. SVR II: Widowmaker/BBB@65%/SSL@85% rotating. Anchor PR Set+Jokers+FSL.",
     },
     {
+        # Book (p53-54): BBB FSL is the heaviest book-approved BBB variant
         "block": 5,
-        "name": "Cierre — BBB Heavy",
-        "leader_template": "bbb_forever_heavy",
+        "name": "Cierre — BBB FSL",
+        "leader_template": "bbb_fsl",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
-        "anchor_template": "ssl_5x5",
+        "anchor_template": "fsl_5x5",
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
-        "tm_pct": 90,
-        "notes": "BBB Heavy 65/55/75% con TMs altos tras un año. Anchor SSL + Jokers. Cerrar a tope.",
+        "tm_pct": 85,  # Book p53-54: conservative TM required for BBB FSL
+        "notes": "Book p53-54. BBB FSL (65/70/75%) — heaviest BBB variant in the book. Anchor PR Set+Jokers+FSL.",
     },
 ]
 
