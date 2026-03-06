@@ -1248,7 +1248,11 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
                 main_sets.append({"type": "normal", "weight_kg": w, "reps": reps})
 
         # -- Supplemental sets --
-        if supp_key != "none" and supp_tmpl.get("sets_per_session", 0) > 0:
+        has_supplemental = (
+            supp_key != "none"
+            and (supp_tmpl.get("sets_per_session", 0) > 0 or "week_spec" in supp_tmpl)
+        )
+        if has_supplemental:
             # Resolve supplemental percentage
             supp_pct = get_supplemental_pct(supp_key, week_type, cycle_in_phase, lift, tm)
 

@@ -153,8 +153,17 @@ SUPPLEMENTAL_TEMPLATES = {
         "sets_per_session": 5,
         "reps_per_set": 10,
         # Percentages per week_type (using 3/5/1 ordering):
-        # Week 1 (3s): 60%, Week 2 (5s): 50%, Week 3 (531): 70%
+        # Week 1 (5s): 60%, Week 2 (3s): 50%, Week 3 (531): 70%
         "pct_by_week": {1: 0.60, 2: 0.50, 3: 0.70},
+        "pct_source": "fixed_pct",
+    },
+    "bbb_forever_heavy": {
+        "name": "Forever BBB (Heavy)",
+        "description": "5×10, higher pcts for experienced lifters (65/55/75)",
+        "role": "leader",
+        "sets_per_session": 5,
+        "reps_per_set": 10,
+        "pct_by_week": {1: 0.65, 2: 0.55, 3: 0.75},
         "pct_source": "fixed_pct",
     },
     "bbb_constant": {
@@ -168,12 +177,12 @@ SUPPLEMENTAL_TEMPLATES = {
     },
     "bbb_challenge": {
         "name": "BBB Challenge",
-        "description": "5×10, pct increases per cycle (50→60→70)",
+        "description": "5×10, aggressive pct increase per cycle (60→70)",
         "role": "leader",
         "sets_per_session": 5,
         "reps_per_set": 10,
-        # pct escalates by cycle number within the leader phase
-        "pct_by_cycle": {1: 0.50, 2: 0.60},
+        # Aggressive: starts at 60%, pushes to 70% in cycle 2
+        "pct_by_cycle": {1: 0.60, 2: 0.70},
         "pct_source": "fixed_pct",
     },
     "fsl_5x5": {
@@ -184,6 +193,16 @@ SUPPLEMENTAL_TEMPLATES = {
         "reps_per_set": 5,
         "pct_by_week": {1: None, 2: None, 3: None},  # None = use FSL
         "pct_source": "fsl",
+    },
+    "ssl_5x5": {
+        "name": "SSL 5×5",
+        "description": "5×5 at Second Set Last weight (heavier than FSL)",
+        "role": "anchor",
+        "sets_per_session": 5,
+        "reps_per_set": 5,
+        # SSL = second working set percentage: 75%/80%/85%
+        "pct_by_week": {1: 0.75, 2: 0.80, 3: 0.85},
+        "pct_source": "fixed_pct",
     },
     "widowmaker": {
         "name": "Widowmaker",
@@ -302,11 +321,11 @@ YEARLY_PLAN = [
         "leader_template": "bbb_forever",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
-        "anchor_template": "fsl_5x5",
-        "anchor_main_work": "pr_set",
+        "anchor_template": "ssl_5x5",
+        "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
-        "tm_pct": 85,
-        "notes": "Establecer el sistema Leader/Anchor. BBB Forever con 60/50/70%.",
+        "tm_pct": 90,
+        "notes": "Establecer Leader/Anchor. BBB Forever 60/50/70%. Anchor SSL (heavier than FSL) + Jokers.",
     },
     {
         "block": 2,
@@ -314,11 +333,11 @@ YEARLY_PLAN = [
         "leader_template": "bbb_challenge",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
-        "anchor_template": "widowmaker",
-        "anchor_main_work": "pr_set",
+        "anchor_template": "fsl_5x5",
+        "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "notes": "Subir volumen BBB (50→60%). Widowmakers como anchor.",
+        "notes": "BBB Challenge agresivo: 60%→70%. Anchor con PR Set + Jokers + FSL. TM 85% por el volumen alto.",
     },
     {
         "block": 3,
@@ -329,8 +348,8 @@ YEARLY_PLAN = [
         "anchor_template": "5x5_531_anchor",
         "anchor_main_work": "5s_pro",
         "anchor_cycles": 1,
-        "tm_pct": 80,  # Mandatory 80% for 5x5/3/1
-        "notes": "Fuerza pura. Velocidad de barra es ley. TM al 80%.",
+        "tm_pct": 80,  # Mandatory 80% for 5x5/3/1 — no negotiation
+        "notes": "Fuerza pura. 25 reps pesadas por sesión. TM 80% obligatorio (Wendler). Anchor sube a 5×3@90%, 3×3@95%.",
     },
     {
         "block": 4,
@@ -338,23 +357,23 @@ YEARLY_PLAN = [
         "leader_template": "svr2",
         "leader_main_work": "pr_set",  # SVR II week 1 has PR set
         "leader_cycles": 2,
-        "anchor_template": "fsl_5x5",
+        "anchor_template": "ssl_5x5",
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "notes": "Variedad: Widowmaker/BBB/SSL cada semana. Anchor con jokers.",
+        "notes": "SVR II: Widowmaker/BBB@65%/SSL@85% rotando. Anchor SSL + Jokers para máxima intensidad.",
     },
     {
         "block": 5,
-        "name": "Cierre — BBB Avanzado",
-        "leader_template": "bbb_forever",
+        "name": "Cierre — BBB Heavy",
+        "leader_template": "bbb_forever_heavy",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
-        "anchor_template": "fsl_5x5",
-        "anchor_main_work": "pr_set",
+        "anchor_template": "ssl_5x5",
+        "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
-        "tm_pct": 85,
-        "notes": "Volver al BBB con TMs más altos. Cerrar el año.",
+        "tm_pct": 90,
+        "notes": "BBB Heavy 65/55/75% con TMs altos tras un año. Anchor SSL + Jokers. Cerrar a tope.",
     },
 ]
 
