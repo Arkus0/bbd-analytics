@@ -25,7 +25,7 @@ PROGRAM_START_531 = "2026-02-20"
 TRAINING_MAX = {
     "ohp":      58,     # From BBB Day 1 data: 85% x 50kg → TM ≈ 58
     "deadlift": 140,    # From BBD data: e1RM 156kg → TM ≈ 140
-    "bench":    84,     # Recalibrated: 64kg×16 AMRAP → e1RM ~98kg → TM ~85% ≈ 84
+    "bench":    90,     # 2026-03-06: 88kg×10 (e1RM ~117) + 92×3 jokers → TM 90 (conservative)
     "squat":    80,     # Conservative: no back squat history, based on front sq/zercher
 }
 
@@ -47,6 +47,8 @@ TM_HISTORY = {
         {"from": "2026-02-20", "base_tm": 76, "bumps_applied": 0},
         # Recalibrated after 64kg×16 AMRAP on 2026-02-23 → e1RM ~98 → TM ~84
         {"from": "2026-02-24", "base_tm": 84, "bumps_applied": 0},
+        # Recalibrated: 88kg×10 (e1RM 117) + 92×3 jokers → TM 90 (conservative)
+        {"from": "2026-03-06", "base_tm": 90, "bumps_applied": 0},
     ],
     "squat": [
         {"from": "2026-02-20", "base_tm": 80, "bumps_applied": 0},
