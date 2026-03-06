@@ -1160,6 +1160,136 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
 # HEVY ROUTINE AUTO-UPDATER
 # ═════════════════════════════════════════════════════════════════════
 
+def _build_session_notes(plan_pos: dict | None, lift: str, tm: float,
+                         week_type: int, supp_key: str, main_work_key: str,
+                         replaces_main: bool, cycle_in_phase: int) -> str:
+    """
+    Build informational notes for the main lift exercise in Hevy.
+
+    Gives Juan all the context he needs without consulting the book:
+    - Phase (Leader/Anchor/Deload/TM Test)
+    - Main work mode (5's PRO vs PR Set vs Jokers)
+    - Supplemental template and what it means
+    - Rest time guidance
+    - Key rules for this phase
+    """
+    if plan_pos is None:
+        return ""
+
+    phase = plan_pos.get("phase", "pre_plan")
+    block = plan_pos.get("block")
+    block_name = block["name"] if block else "Pre-plan"
+    week_name = plan_pos.get("week_name", "?")
+
+    lines = []
+
+    # ── Header: where we are ──
+    phase_labels = {
+        "leader": "📦 LEADER",
+        "anchor": "⚓ ANCHOR",
+        "7th_week_deload": "🛌 DELOAD",
+        "7th_week_tm_test": "📊 TM TEST",
+        "pre_plan": "🔄 PRE-PLAN",
+    }
+    lines.append(f"{phase_labels.get(phase, phase)} · {block_name}")
+    lines.append(f"TM: {tm:.0f}kg · {week_name}")
+
+    # ── Main work instructions ──
+    if phase == "7th_week_deload":
+        lines.append("")
+        lines.append("⚡ Deload: pesos ligeros, sin esforzarse")
+        lines.append("❌ Sin AMRAP · Sin jokers")
+        lines.append("🎯 Movilidad y recuperación")
+    elif phase == "7th_week_tm_test":
+        lines.append("")
+        lines.append("📊 Subir hasta TM × 3-5 reps")
+        lines.append("Si no sacas 3-5 reps → bajar TM un 10%")
+        lines.append("❌ Sin jokers · Sin AMRAP")
+    elif main_work_key == "5s_pro":
+        lines.append("")
+        lines.append("⚡ 5's PRO: todas las series ×5")
+        lines.append("❌ Sin AMRAP · Sin jokers")
+        lines.append("🎯 Velocidad de barra · Control")
+    elif main_work_key == "pr_set":
+        lines.append("")
+        lines.append("🔥 PR SET: última serie AMRAP")
+        lines.append("💪 Deja 1-2 reps en reserva")
+        lines.append("❌ Sin jokers")
+    elif main_work_key == "pr_set_jokers":
+        lines.append("")
+        lines.append("🔥 PR SET: última serie AMRAP")
+        lines.append("🃏 JOKERS: 1-3 singles/triples por encima")
+        lines.append("💪 Solo si el AMRAP ha ido bien")
+
+    # ── Supplemental info ──
+    supp_tmpl = SUPPLEMENTAL_TEMPLATES.get(supp_key, {})
+    supp_name = supp_tmpl.get("name", supp_key)
+    skip_generic_rest = False
+
+    if replaces_main:
+        # 5x5/3/1: the supplemental IS the main work
+        lines.append("")
+        lines.append(f"📋 {supp_name}: las 5×5 SON el trabajo principal")
+        lines.append("🎯 Barra rápida en cada rep")
+    elif supp_key == "none":
+        pass  # Deload, no supplemental
+    elif supp_key == "bbs":
+        lines.append("")
+        lines.append(f"📋 Suplemental: {supp_name}")
+        lines.append("💀 10×5 al peso del primer set (FSL)")
+        lines.append("⏱️ Descanso supl: 2-3 min entre sets")
+        skip_generic_rest = True
+    elif supp_key == "pervertor":
+        ws = supp_tmpl.get("week_spec", {}).get(week_type, {})
+        supp_type = ws.get("type", "?")
+        type_labels = {"bbs": "10×5 FSL (BBS)", "bbb": "5×10 FSL (BBB)", "ssl": "5×5 SSL (85%)"}
+        lines.append("")
+        lines.append(f"📋 Suplemental: Pervertor")
+        lines.append(f"→ Esta semana: {type_labels.get(supp_type, supp_type)}")
+    elif supp_key == "widowmaker":
+        lines.append("")
+        lines.append(f"📋 Suplemental: Widowmaker")
+        lines.append("💀 1×20 al peso del primer set (FSL)")
+        lines.append("🫁 Respira entre reps si hace falta")
+    elif "bbb" in supp_key:
+        pct_map = supp_tmpl.get("pct_by_week", {})
+        pct = pct_map.get(week_type) or supp_tmpl.get("pct_by_cycle", {}).get(cycle_in_phase)
+        pct_str = f"{int(pct*100)}%" if pct else "FSL%"
+        lines.append("")
+        lines.append(f"📋 Suplemental: {supp_name}")
+        lines.append(f"→ 5×10 @ {pct_str} del TM")
+    elif supp_key == "fsl_5x5":
+        lines.append("")
+        lines.append(f"📋 Suplemental: FSL 5×5")
+        lines.append("→ 5×5 al peso del primer set de trabajo")
+    elif supp_key == "ssl_5x5":
+        lines.append("")
+        lines.append(f"📋 Suplemental: SSL 5×5")
+        lines.append("→ 5×5 al peso del segundo set de trabajo")
+    else:
+        if supp_name and supp_name != "No supplemental":
+            lines.append("")
+            lines.append(f"📋 Suplemental: {supp_name}")
+
+    # ── Rest guidance ──
+    if phase not in ("7th_week_deload", "7th_week_tm_test") and not skip_generic_rest:
+        lines.append("")
+        if lift in ("deadlift", "squat"):
+            lines.append("⏱️ Descanso: 3-5 min (principal) · 2-3 min (supl)")
+        else:
+            lines.append("⏱️ Descanso: 2-3 min (principal) · 90s-2 min (supl)")
+
+    # ── Assistance reminder ──
+    if phase == "leader":
+        lines.append("")
+        lines.append("🏋️ Asistencia: push 25-50, pull 25-50, pierna/core 25-50")
+    elif phase == "anchor":
+        lines.append("")
+        lines.append("🏋️ Asistencia: push 50-100, pull 50-100, pierna/core 50-100")
+
+    return "\n".join(lines)
+
+
 def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bumps: int,
                             plan_pos: dict | None = None) -> list:
     """
@@ -1283,7 +1413,18 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
     # Rest time: longer for DL/Squat
     rest = 180 if lift in ("deadlift", "squat") else 120
 
-    exercises = [{"exercise_template_id": tid, "rest_seconds": rest, "sets": main_sets}]
+    # ── Build session notes for Hevy ──
+    notes = _build_session_notes(
+        plan_pos, lift, tm, week_type, supp_key, main_mode_key,
+        replaces_main, cycle_in_phase,
+    )
+
+    exercises = [{
+        "exercise_template_id": tid,
+        "rest_seconds": rest,
+        "sets": main_sets,
+        "notes": notes,
+    }]
 
     # ── Accessories (static templates from config) ──
     # Reduce accessories during deload/TM test
