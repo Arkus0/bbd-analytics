@@ -251,6 +251,29 @@ SUPPLEMENTAL_TEMPLATES = {
         },
         "pct_source": "mixed",
     },
+    "bbs": {
+        "name": "Boring But Strong",
+        "description": "10×5 at FSL weight. Best for strength + volume. Book p134-140.",
+        "role": "leader",
+        "sets_per_session": 10,
+        "reps_per_set": 5,
+        "pct_by_week": {1: None, 2: None, 3: None},  # None = use FSL
+        "pct_source": "fsl",
+    },
+    "pervertor": {
+        "name": "Pervertor",
+        "description": "BBS/BBB/SSL rotating weekly. Strength + size hybrid. Book p159-162.",
+        "role": "leader",
+        "week_spec": {
+            # Week 1: BBS-style (10×5 at FSL)
+            1: {"type": "bbs", "sets": 10, "reps": 5, "pct_source": "fsl"},
+            # Week 2: BBB-style (5×10 at FSL)
+            2: {"type": "bbb", "sets": 5, "reps": 10, "pct_source": "fsl"},
+            # Week 3: SSL-style (5×5 at second set weight ≈ 75/80/85%)
+            3: {"type": "ssl", "sets": 5, "reps": 5, "pct": 0.85, "pct_source": "fixed_pct"},
+        },
+        "pct_source": "mixed",
+    },
     "none": {
         "name": "No supplemental",
         "description": "Used during 7th week protocol",
@@ -318,69 +341,89 @@ MAIN_WORK_MODES = {
 
 YEARLY_PLAN = [
     {
-        # Book combo (p74, Program 4): Leader BBB → Anchor PR Set + Jokers + FSL
+        # Base building: high volume at moderate intensity. Establish TMs, work capacity.
+        # Book p48-49: Forever BBB is the recommended starting BBB variant.
+        # Anchor FSL 5×5 with PR sets to test gains from volume phase.
         "block": 1,
         "name": "Base — Forever BBB",
         "leader_template": "bbb_forever",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
         "anchor_template": "fsl_5x5",
-        "anchor_main_work": "pr_set_jokers",
+        "anchor_main_work": "pr_set",
         "anchor_cycles": 1,
-        "tm_pct": 85,  # Book p45: 85% TM for BBB
-        "notes": "Book p48-49. Forever BBB 60/50/70%. Anchor PR Set+Jokers+FSL (p74 Program 4).",
+        "tm_pct": 85,
+        "notes": "Book p48-49. Forever BBB 60/50/70%. Build volume base + work capacity. "
+                 "Anchor PR Set + FSL 5×5 to test initial gains.",
     },
     {
-        # Book combo (p52-53): BBB Challenge → Original 5/3/1 or PR Set+FSL
+        # Strength-volume bridge: 10×5 at FSL weights. Higher intensity than BBB,
+        # still very high volume. Wendler says BBS works better for strength than BBB.
+        # Book p134-140: "works especially well for the press."
+        # Anchor: PR Set + Jokers + FSL — start testing with jokers.
         "block": 2,
-        "name": "Empuje — BBB Challenge",
-        "leader_template": "bbb_challenge",
+        "name": "Fuerza-Volumen — BBS",
+        "leader_template": "bbs",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
         "anchor_template": "fsl_5x5",
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
-        "tm_pct": 85,  # Book p52: BBB Challenge uses 85% TM (90% max for beginners)
-        "notes": "Book p52-53. Challenge: cycle1=50%, cycle2=60%. Anchor PR Set+Jokers+FSL.",
+        "tm_pct": 85,
+        "notes": "Book p134-140. BBS 10×5 @ FSL. Best strength:volume ratio in the book. "
+                 "Anchor PR Set + Jokers + FSL to test strength gains.",
     },
     {
-        # Book (p87-95): 5x5/3/1 leader → 5x5/3/1 Anchor
+        # Variety block: combines BBS/BBB/SSL in rotating weeks. Prevents staleness
+        # after 22 weeks of single-template work. Still builds both strength and size.
+        # Book p159-162: "combines strength and size without compromising much."
+        # Must use 3/5/1 programming.
+        # Anchor: PR Set + Jokers + FSL for full testing.
         "block": 3,
-        "name": "Fuerza — 5x5/3/1",
+        "name": "Híbrido — Pervertor",
+        "leader_template": "pervertor",
+        "leader_main_work": "5s_pro",
+        "leader_cycles": 2,
+        "anchor_template": "fsl_5x5",
+        "anchor_main_work": "pr_set_jokers",
+        "anchor_cycles": 1,
+        "tm_pct": 85,
+        "notes": "Book p159-162. Pervertor: W1=10×5 FSL (BBS), W2=5×10 FSL (BBB), "
+                 "W3=5×5 SSL. Best hybrid template for strength + size.",
+    },
+    {
+        # Pure strength peak: 5×5 at 85/90/95% TM. Most intense leader in the book.
+        # TM MUST be 80% — this is mandatory per Wendler (p88).
+        # Book p87-95: "great for intermediate and advanced lifters. Ideal for strength."
+        # Anchor uses the 5x5/3/1 higher-intensity variant.
+        "block": 4,
+        "name": "Pico Fuerza — 5x5/3/1",
         "leader_template": "5x5_531",
-        "leader_main_work": "5s_pro",  # 5x5 replaces main+supplemental
+        "leader_main_work": "5s_pro",
         "leader_cycles": 2,
         "anchor_template": "5x5_531_anchor",
         "anchor_main_work": "5s_pro",
         "anchor_cycles": 1,
-        "tm_pct": 80,  # Book p88: 80% TM mandatory, no higher
-        "notes": "Book p87-95. 5x5 at 85/90/95% TM. Anchor 5x3@90%,5x5@85%,3x3@95%. TM 80% mandatory.",
+        "tm_pct": 80,  # Mandatory per book p88
+        "notes": "Book p87-95. 5×5 at 85/90/95% TM. TM 80% mandatory. "
+                 "Anchor 5×3@90%, 5×5@85%, 3×3@95%. Peak strength block.",
     },
     {
-        # Book (p77-80): SVR II leader → standard FSL anchor
-        "block": 4,
-        "name": "Variedad — SVR II",
-        "leader_template": "svr2",
-        "leader_main_work": "pr_set",  # SVR II week 1 has PR set
-        "leader_cycles": 2,
-        "anchor_template": "fsl_5x5",
-        "anchor_main_work": "pr_set_jokers",
-        "anchor_cycles": 1,
-        "tm_pct": 85,  # Book p77: 85% TM
-        "notes": "Book p77-80. SVR II: Widowmaker/BBB@65%/SSL@85% rotating. Anchor PR Set+Jokers+FSL.",
-    },
-    {
-        # Book (p53-54): BBB FSL is the heaviest book-approved BBB variant
+        # Final volume push: BBB FSL is the heaviest approved BBB variant (65/70/75%).
+        # Capitalizes on strength gains from block 4 to push maximum hypertrophy.
+        # Book p53-54: "requires one to be very conservative with the training maxes."
+        # Anchor: Widowmaker (1×20 @ FSL) — brutal hypertrophy to close the year.
         "block": 5,
-        "name": "Cierre — BBB FSL",
+        "name": "Volumen Final — BBB FSL",
         "leader_template": "bbb_fsl",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
-        "anchor_template": "fsl_5x5",
-        "anchor_main_work": "pr_set_jokers",
+        "anchor_template": "widowmaker",
+        "anchor_main_work": "pr_set",
         "anchor_cycles": 1,
-        "tm_pct": 85,  # Book p53-54: conservative TM required for BBB FSL
-        "notes": "Book p53-54. BBB FSL (65/70/75%) — heaviest BBB variant in the book. Anchor PR Set+Jokers+FSL.",
+        "tm_pct": 85,
+        "notes": "Book p53-54. BBB FSL (65/70/75%) — heaviest BBB variant. "
+                 "Anchor Widowmaker 1×20 @ FSL — maximum hypertrophy to close year.",
     },
 ]
 
