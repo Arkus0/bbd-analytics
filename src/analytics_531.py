@@ -1298,6 +1298,51 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
     return exercises
 
 
+def _get_manual_accessories(routine_id: str, day_num: int, main_tid: str,
+                            headers: dict) -> list:
+    """
+    Fetch current routine from Hevy and extract manually-added accessories.
+
+    Returns exercise dicts for exercises that are:
+    - NOT the main lift
+    - NOT in DAY_ACCESSORIES for this day (those are re-generated)
+    """
+    import requests
+    try:
+        r = requests.get(
+            f"https://api.hevyapp.com/v1/routines/{routine_id}",
+            headers=headers
+        )
+        if not r.ok:
+            return []
+    except Exception:
+        return []
+
+    routine = r.json().get("routine", r.json())
+    current_exercises = routine.get("exercises", [])
+
+    # Build set of template_ids that are "managed" (main + hardcoded accessories)
+    managed_tids = {main_tid}
+    for acc in DAY_ACCESSORIES.get(day_num, []):
+        managed_tids.add(acc["exercise_template_id"])
+
+    manual = []
+    for ex in current_exercises:
+        tid = ex.get("exercise_template_id", "")
+        if tid not in managed_tids:
+            # Preserve this exercise as-is (sets, rest, notes, etc.)
+            manual.append({
+                "exercise_template_id": tid,
+                "rest_seconds": ex.get("rest_seconds", 60),
+                "sets": [
+                    {k: v for k, v in s.items() if v is not None}
+                    for s in ex.get("sets", [])
+                ],
+            })
+
+    return manual
+
+
 def update_hevy_routines(df: pd.DataFrame) -> dict:
     """
     Update all 4 routines in Hevy with correct weights for the current
@@ -1362,6 +1407,14 @@ def update_hevy_routines(df: pd.DataFrame) -> dict:
             results[day_num] = {"status": "skipped", "reason": "no TM"}
             continue
 
+        # Preserve manually-added accessories from current routine
+        main_tid = MAIN_LIFT_TIDS.get(lift, "")
+        manual_accs = _get_manual_accessories(
+            routine_id, day_num, main_tid, headers
+        )
+        if manual_accs:
+            exercises.extend(manual_accs)
+
         payload = {
             "routine": {
                 "title": title,
@@ -1386,6 +1439,7 @@ def update_hevy_routines(df: pd.DataFrame) -> dict:
                     "tm_bumps": tm_bumps,
                     "template": plan_pos.get("supplemental_template", "?"),
                     "main_work": plan_pos.get("main_work_mode", "?"),
+                    "preserved_accessories": len(manual_accs),
                 }
             else:
                 results[day_num] = {"status": "error", "code": r.status_code, "msg": r.text[:200]}

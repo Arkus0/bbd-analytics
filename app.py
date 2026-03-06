@@ -1349,6 +1349,30 @@ if is_531:
                     c2.metric("BBB", f"{s['bbb_sets']} sets × {s['bbb_avg_reps']} reps")
                     c3.metric("Accesorios", f"{s['accessory_sets']} sets | {s['accessory_volume']:,}kg")
 
+                    # Show individual accessory exercises
+                    sess_acc = df_531[(df_531["hevy_id"] == s["hevy_id"]) & (~df_531["is_main_lift"])]
+                    if not sess_acc.empty:
+                        acc_rows = []
+                        for ex_name, ex_grp in sess_acc.groupby("exercise", sort=False):
+                            mg = ex_grp["muscle_group"].iloc[0]
+                            n = len(ex_grp)
+                            best_w = ex_grp["weight_kg"].max()
+                            total_r = int(ex_grp["reps"].sum())
+                            vol = int(ex_grp["volume_kg"].sum())
+                            w_str = f"{best_w:.0f}kg" if best_w > 0 else "BW"
+                            acc_rows.append({
+                                "Ejercicio": ex_name,
+                                "Grupo": mg,
+                                "Sets": n,
+                                "Reps": total_r,
+                                "Peso": w_str,
+                                "Vol (kg)": vol,
+                            })
+                        st.dataframe(
+                            pd.DataFrame(acc_rows),
+                            use_container_width=True, hide_index=True, height=min(35 + 35 * len(acc_rows), 250),
+                        )
+
     elif page == "🏆 PRs":
         _sf_header("PRs", "🏆")
 

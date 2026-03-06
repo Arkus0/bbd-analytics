@@ -673,6 +673,57 @@ EXERCISE_DB_531 = {
         "role": "accessory",
         "muscle_group": "Core",
     },
+    # ── Accessories Juan uses regularly ──
+    "1B2B1E7C": {
+        "name": "Pull-up",
+        "role": "accessory",
+        "muscle_group": "Espalda",
+    },
+    "F1E57334": {
+        "name": "Dumbbell Row",
+        "role": "accessory",
+        "muscle_group": "Espalda",
+    },
+    "6A6C31A5": {
+        "name": "Lat Pulldown (Cable)",
+        "role": "accessory",
+        "muscle_group": "Espalda",
+    },
+    "BE640BA0": {
+        "name": "Face Pull",
+        "role": "accessory",
+        "muscle_group": "Hombros",
+    },
+    "E8D86EE8": {
+        "name": "Band Pull-apart",
+        "role": "accessory",
+        "muscle_group": "Hombros",
+    },
+    "6FCD7755": {
+        "name": "Dips",
+        "role": "accessory",
+        "muscle_group": "Pecho",
+    },
+    "21310F5F": {
+        "name": "Tricep Pushdown (Cable)",
+        "role": "accessory",
+        "muscle_group": "Tríceps",
+    },
+    "A5AC6449": {
+        "name": "Barbell Curl",
+        "role": "accessory",
+        "muscle_group": "Bíceps",
+    },
+    "1E9A6B8E": {
+        "name": "Preacher Curl (Machine)",
+        "role": "accessory",
+        "muscle_group": "Bíceps",
+    },
+    "BF6ECE89": {
+        "name": "Dumbbell Step-up",
+        "role": "accessory",
+        "muscle_group": "Piernas",
+    },
 }
 
 # Workouts done without routine_id that should be included
