@@ -68,16 +68,20 @@ TM_INCREMENT = {
 # TM bumps after each 3-week mini-cycle (+2kg upper, +4kg lower)
 # No deload between mini-cycles — deload only on week 7.
 #
-# Week 1: 5s   (mini-cycle A)
-# Week 2: 3s   (mini-cycle A)
-# Week 3: 531  (mini-cycle A) → bump TM
-# Week 4: 5s   (mini-cycle B, new TM)
-# Week 5: 3s   (mini-cycle B)
-# Week 6: 531  (mini-cycle B) → bump TM
-# Week 7: Deload
+# Week ordering:
+#   "531" (standard): Week 1=5s, Week 2=3s, Week 3=531
+#   "351" (Forever default): Week 1=3s, Week 2=5s, Week 3=531
+#   3/5/1 puts the heaviest working week first when you're freshest.
+#   Most Forever templates use 3/5/1.
 MACRO_CYCLE_LENGTH = 7  # weeks in a full macro cycle
 WORKING_BLOCK_LENGTH = 3  # weeks in each working mini-cycle
 SESSIONS_PER_WEEK = 4  # one session per main lift (OHP, DL, Bench, Squat)
+
+# Map physical week in cycle (1,2,3) → week_type for CYCLE_WEEKS
+WEEK_ORDER_MAP = {
+    "531": {1: 1, 2: 2, 3: 3},  # Standard: 5s → 3s → 531
+    "351": {1: 2, 2: 1, 3: 3},  # Forever: 3s → 5s → 531
+}
 
 CYCLE_WEEKS = {
     1: {  # "5s week"
@@ -162,14 +166,13 @@ SUPPLEMENTAL_TEMPLATES = {
     },
     "bbb_fsl": {
         "name": "BBB, FSL",
-        "description": "5×10 at FSL percentages (65/70/75). Heaviest BBB variant. Book p53-54.",
+        "description": "5×10 at FSL percentages (dynamic). Heaviest BBB variant. Book p53-54.",
         "role": "leader",
         "sets_per_session": 5,
         "reps_per_set": 10,
-        # Book: BBB FSL uses first working set % as BBB weight
-        # 5s week FSL=65%, 3s week FSL=70%, 531 week FSL=75%
-        "pct_by_week": {1: 0.65, 2: 0.70, 3: 0.75},
-        "pct_source": "fixed_pct",
+        # BBB FSL uses first working set % — dynamic, respects week ordering
+        "pct_by_week": {1: None, 2: None, 3: None},  # None = use FSL
+        "pct_source": "fsl",
     },
     "bbb_constant": {
         "name": "Original BBB",
@@ -220,14 +223,15 @@ SUPPLEMENTAL_TEMPLATES = {
     },
     "5x5_531": {
         "name": "5x5/3/1",
-        "description": "5×5 at the top set weight (85/90/95%)",
+        "description": "5 sets following 5/3/1 rep scheme: 5×5@85%, 5×3@90%, 5×1@95%. Book p87-95.",
         "role": "leader",
-        "sets_per_session": 5,
-        "reps_per_set": 5,
-        # The 5x5 IS the main work — top set pct varies by week
-        "pct_by_week": {1: 0.85, 2: 0.90, 3: 0.95},
+        "week_spec": {
+            1: {"sets": 5, "reps": 5, "pct": 0.85},  # 5s week: 5×5
+            2: {"sets": 5, "reps": 3, "pct": 0.90},  # 3s week: 5×3
+            3: {"sets": 5, "reps": 1, "pct": 0.95},  # 531 week: 5×1
+        },
         "pct_source": "fixed_pct",
-        "replaces_main_work": True,  # No separate 531 sets, 5x5 IS the workout
+        "replaces_main_work": True,  # No separate 531 sets, 5×5/3/1 IS the workout
     },
     "5x5_531_anchor": {
         "name": "5x5/3/1 Anchor",
@@ -344,9 +348,6 @@ MAIN_WORK_MODES = {
 
 YEARLY_PLAN = [
     {
-        # Base building: high volume at moderate intensity. Establish TMs, work capacity.
-        # Book p48-49: Forever BBB is the recommended starting BBB variant.
-        # Anchor FSL 5×5 with PR sets to test gains from volume phase.
         "block": 1,
         "name": "Base — Forever BBB",
         "leader_template": "bbb_forever",
@@ -356,14 +357,10 @@ YEARLY_PLAN = [
         "anchor_main_work": "pr_set",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "notes": "Book p48-49. Forever BBB 60/50/70%. Build volume base + work capacity. "
-                 "Anchor PR Set + FSL 5×5 to test initial gains.",
+        "week_order": "351",  # 3/5/1 per book p48-49
+        "notes": "Book p48-49. Forever BBB 60/50/70% with 3/5/1 ordering.",
     },
     {
-        # Strength-volume bridge: 10×5 at FSL weights. Higher intensity than BBB,
-        # still very high volume. Wendler says BBS works better for strength than BBB.
-        # Book p134-140: "works especially well for the press."
-        # Anchor: PR Set + Jokers + FSL — start testing with jokers.
         "block": 2,
         "name": "Fuerza-Volumen — BBS",
         "leader_template": "bbs",
@@ -373,15 +370,10 @@ YEARLY_PLAN = [
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "notes": "Book p134-140. BBS 10×5 @ FSL. Best strength:volume ratio in the book. "
-                 "Anchor PR Set + Jokers + FSL to test strength gains.",
+        "week_order": "351",  # 3/5/1 — heavier FSL on first week when freshest
+        "notes": "Book p134-140. BBS 10×5 @ FSL. Best strength:volume ratio.",
     },
     {
-        # Variety block: combines BBS/BBB/SSL in rotating weeks. Prevents staleness
-        # after 22 weeks of single-template work. Still builds both strength and size.
-        # Book p159-162: "combines strength and size without compromising much."
-        # Must use 3/5/1 programming.
-        # Anchor: PR Set + Jokers + FSL for full testing.
         "block": 3,
         "name": "Híbrido — Pervertor",
         "leader_template": "pervertor",
@@ -391,14 +383,10 @@ YEARLY_PLAN = [
         "anchor_main_work": "pr_set_jokers",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "notes": "Book p159-162. Pervertor: W1=10×5 FSL (BBS), W2=5×10 FSL (BBB), "
-                 "W3=5×5 SSL. Best hybrid template for strength + size.",
+        "week_order": "351",  # 3/5/1 mandatory per book p160
+        "notes": "Book p159-162. Pervertor: W1=10×5 BBS, W2=5×10 BBB, W3=5×5 SSL.",
     },
     {
-        # Pure strength peak: 5×5 at 85/90/95% TM. Most intense leader in the book.
-        # TM MUST be 80% — this is mandatory per Wendler (p88).
-        # Book p87-95: "great for intermediate and advanced lifters. Ideal for strength."
-        # Anchor uses the 5x5/3/1 higher-intensity variant.
         "block": 4,
         "name": "Pico Fuerza — 5x5/3/1",
         "leader_template": "5x5_531",
@@ -408,14 +396,10 @@ YEARLY_PLAN = [
         "anchor_main_work": "5s_pro",
         "anchor_cycles": 1,
         "tm_pct": 80,  # Mandatory per book p88
-        "notes": "Book p87-95. 5×5 at 85/90/95% TM. TM 80% mandatory. "
-                 "Anchor 5×3@90%, 5×5@85%, 3×3@95%. Peak strength block.",
+        "week_order": "531",  # Standard 5/3/1 — book p87-95 examples
+        "notes": "Book p87-95. 5×5@85%, 5×3@90%, 5×1@95%. TM 80% mandatory.",
     },
     {
-        # Final volume push: BBB FSL is the heaviest approved BBB variant (65/70/75%).
-        # Capitalizes on strength gains from block 4 to push maximum hypertrophy.
-        # Book p53-54: "requires one to be very conservative with the training maxes."
-        # Anchor: Widowmaker (1×20 @ FSL) — brutal hypertrophy to close the year.
         "block": 5,
         "name": "Volumen Final — BBB FSL",
         "leader_template": "bbb_fsl",
@@ -425,8 +409,8 @@ YEARLY_PLAN = [
         "anchor_main_work": "pr_set",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "notes": "Book p53-54. BBB FSL (65/70/75%) — heaviest BBB variant. "
-                 "Anchor Widowmaker 1×20 @ FSL — maximum hypertrophy to close year.",
+        "week_order": "351",  # 3/5/1 per book p53-54
+        "notes": "Book p53-54. BBB FSL (65/70/75%). Anchor Widowmaker 1×20 @ FSL.",
     },
 ]
 
@@ -499,7 +483,10 @@ def get_plan_position(total_sessions: int) -> dict:
             if w < leader_weeks:
                 # Leader phase
                 cycle_in_leader = w // 3 + 1  # 1 or 2
-                week_in_cycle = w % 3 + 1  # 1, 2, or 3
+                physical_week = w % 3 + 1  # 1, 2, or 3 (position in cycle)
+                # Remap through week_order (351 or 531)
+                order = block.get("week_order", "531")
+                week_type = WEEK_ORDER_MAP[order][physical_week]
                 # Bumps from completed leader cycles
                 bumps_in_block = w // 3
                 return {
@@ -507,8 +494,9 @@ def get_plan_position(total_sessions: int) -> dict:
                     "block": block,
                     "block_num": block["block"],
                     "cycle_in_phase": cycle_in_leader,
-                    "week_type": week_in_cycle,
-                    "week_name": CYCLE_WEEKS[week_in_cycle]["name"],
+                    "week_type": week_type,
+                    "physical_week": physical_week,
+                    "week_name": CYCLE_WEEKS[week_type]["name"],
                     "week_in_block": w + 1,
                     "tm_bumps_total": cumulative_bumps + bumps_in_block,
                     "supplemental_template": block["leader_template"],
@@ -535,15 +523,19 @@ def get_plan_position(total_sessions: int) -> dict:
                 # Anchor phase
                 anchor_offset = w - leader_weeks - 1
                 cycle_in_anchor = anchor_offset // 3 + 1
-                week_in_cycle = anchor_offset % 3 + 1
+                physical_week = anchor_offset % 3 + 1
+                # Remap through week_order
+                order = block.get("week_order", "531")
+                week_type = WEEK_ORDER_MAP[order][physical_week]
                 bumps_in_block = block["leader_cycles"] + (anchor_offset // 3)
                 return {
                     "phase": "anchor",
                     "block": block,
                     "block_num": block["block"],
                     "cycle_in_phase": cycle_in_anchor,
-                    "week_type": week_in_cycle,
-                    "week_name": CYCLE_WEEKS[week_in_cycle]["name"],
+                    "week_type": week_type,
+                    "physical_week": physical_week,
+                    "week_name": CYCLE_WEEKS[week_type]["name"],
                     "week_in_block": w + 1,
                     "tm_bumps_total": cumulative_bumps + bumps_in_block,
                     "supplemental_template": block["anchor_template"],

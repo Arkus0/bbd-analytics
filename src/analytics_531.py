@@ -1162,7 +1162,8 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
 
 def _build_session_notes(plan_pos: dict | None, lift: str, tm: float,
                          week_type: int, supp_key: str, main_work_key: str,
-                         replaces_main: bool, cycle_in_phase: int) -> str:
+                         replaces_main: bool, cycle_in_phase: int,
+                         physical_week: int = 1) -> str:
     """
     Build informational notes for the main lift exercise in Hevy.
 
@@ -1240,7 +1241,7 @@ def _build_session_notes(plan_pos: dict | None, lift: str, tm: float,
         lines.append("⏱️ Descanso supl: 2-3 min entre sets")
         skip_generic_rest = True
     elif supp_key == "pervertor":
-        ws = supp_tmpl.get("week_spec", {}).get(week_type, {})
+        ws = supp_tmpl.get("week_spec", {}).get(physical_week, {})
         supp_type = ws.get("type", "?")
         type_labels = {"bbs": "10×5 FSL (BBS)", "bbb": "5×10 FSL (BBB)", "ssl": "5×5 SSL (85%)"}
         lines.append("")
@@ -1321,6 +1322,10 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
     supp_tmpl = SUPPLEMENTAL_TEMPLATES.get(supp_key, {})
     main_mode = MAIN_WORK_MODES.get(main_mode_key, MAIN_WORK_MODES["pr_set"])
 
+    # Physical week = position in cycle (1,2,3). Used for supplemental rotation.
+    # week_type = remapped via week_order. Used for CYCLE_WEEKS/FSL percentages.
+    physical_week = plan_pos.get("physical_week", week_type) if plan_pos else week_type
+
     # ── Main lift sets ──
     main_sets = []
 
@@ -1384,17 +1389,18 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
         )
         if has_supplemental:
             # Resolve supplemental percentage
-            supp_pct = get_supplemental_pct(supp_key, week_type, cycle_in_phase, lift, tm)
+            # physical_week for template rotation, week_type for FSL percentages
+            supp_pct = get_supplemental_pct(supp_key, physical_week, cycle_in_phase, lift, tm)
 
             if supp_pct is None:
-                # FSL/Widowmaker: use first working set percentage
+                # FSL/Widowmaker: use first working set percentage (follows week_type)
                 supp_pct = get_fsl_pct(week_type)
 
             supp_w = round_to_plate(tm * supp_pct)
 
-            # Handle SVR II and other mixed templates
+            # Handle SVR II, Pervertor and other mixed templates
             if supp_tmpl.get("pct_source") == "mixed" and "week_spec" in supp_tmpl:
-                ws = supp_tmpl["week_spec"].get(week_type, {})
+                ws = supp_tmpl["week_spec"].get(physical_week, {})
                 n_sets = ws.get("sets", 5)
                 reps = ws.get("reps", 10)
                 if isinstance(reps, str):
@@ -1416,7 +1422,7 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
     # ── Build session notes for Hevy ──
     notes = _build_session_notes(
         plan_pos, lift, tm, week_type, supp_key, main_mode_key,
-        replaces_main, cycle_in_phase,
+        replaces_main, cycle_in_phase, physical_week=physical_week,
     )
 
     exercises = [{
