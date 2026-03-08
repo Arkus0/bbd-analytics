@@ -50,6 +50,16 @@ from src.shared_analytics import (
     workout_quality_531, workout_quality_bbd, quality_trend,
     generate_workout_card, build_card_data_531, build_card_data_bbd,
 )
+from src.analytics_candito import (
+    fetch_candito_workouts, workouts_to_dataframe_candito,
+    global_summary_candito, pr_table_candito, lift_progression_candito,
+    session_summary_candito, analyze_progression, weekly_volume_candito,
+    muscle_volume_candito, strength_level_candito, next_session_plan_candito,
+)
+from src.config_candito import (
+    DAY_CONFIG_CANDITO, EXERCISE_DB_CANDITO, STARTING_WEIGHTS,
+    PROGRAM_START_CANDITO, STRENGTH_STANDARDS_CANDITO,
+)
 import requests as _requests
 import re as _re
 
@@ -775,8 +785,19 @@ def load_531_data():
         df = add_cycle_info(df)
     return df
 
+
+@st.cache_data(ttl=120)
+def load_candito_data():
+    """Cache Candito LP data."""
+    workouts = fetch_candito_workouts()
+    if not workouts:
+        return pd.DataFrame()
+    return workouts_to_dataframe_candito(workouts)
+
+
 _bbd_error = None
 _531_error = None
+_candito_error = None
 
 try:
     raw_df = load_raw_data()
@@ -796,18 +817,37 @@ try:
 except Exception as e:
     _531_error = str(e)
     _last_531 = pd.Timestamp.min
-_default_idx = 1 if _last_531 > _last_bbd else 0
+try:
+    _df_candito_check = load_candito_data()
+    _last_candito = _df_candito_check["date"].max() if not _df_candito_check.empty else pd.Timestamp.min
+except Exception as e:
+    _candito_error = str(e)
+    _last_candito = pd.Timestamp.min
+
+_all_last = {"🔥 BBD": _last_bbd, "💀 531 BBB": _last_531, "💪 Candito LP": _last_candito}
+_default_prog = max(_all_last, key=_all_last.get)
+_program_list = ["🔥 BBD", "💀 531 BBB", "💪 Candito LP"]
+_default_idx = _program_list.index(_default_prog)
 
 with st.sidebar:
     st.markdown("# 🔥 BBD Analytics")
-    program = st.selectbox("Programa", ["🔥 BBD", "💀 531 BBB"], index=_default_idx, label_visibility="collapsed")
+    program = st.selectbox("Programa", _program_list, index=_default_idx, label_visibility="collapsed")
     is_531 = program == "💀 531 BBB"
+    is_candito = program == "💪 Candito LP"
     if is_531:
         st.markdown(
             f'<div style="font-family:Oswald,sans-serif;text-transform:uppercase;'
             f'letter-spacing:1px;color:#78716c;font-size:0.75rem;">'
             f'Wendler\'s 531 Boring But Big<br>'
             f'desde {pd.Timestamp(PROGRAM_START_531).strftime("%d %b %Y")}</div>',
+            unsafe_allow_html=True,
+        )
+    elif is_candito:
+        st.markdown(
+            f'<div style="font-family:Oswald,sans-serif;text-transform:uppercase;'
+            f'letter-spacing:1px;color:#78716c;font-size:0.75rem;">'
+            f'Candito Linear Program (Strength/Control)<br>'
+            f'desde {pd.Timestamp(PROGRAM_START_CANDITO).strftime("%d %b %Y")}</div>',
             unsafe_allow_html=True,
         )
     else:
@@ -858,6 +898,15 @@ with st.sidebar:
             "📅 Calendario",
             "🗓️ Vista Anual",
             "🗺️ Plan Forever",
+        ], label_visibility="collapsed")
+    elif is_candito:
+        page = st.radio("Sección", [
+            "📋 Hoy te toca",
+            "📊 Dashboard",
+            "📈 Progresión",
+            "🏋️ Strength Standards",
+            "💪 Sesiones",
+            "🏆 PRs",
         ], label_visibility="collapsed")
     else:
         page = st.radio("Sección", [
@@ -2096,11 +2145,176 @@ if is_531:
     st.stop()  # Don't fall through to BBD sections
 
 # ══════════════════════════════════════════════════════════════════════
+# 💪 CANDITO LP DASHBOARD
+# ══════════════════════════════════════════════════════════════════════
+if is_candito:
+    if _candito_error:
+        st.error(f"❌ Error cargando datos Candito: {_candito_error}")
+        st.info("Puedes cambiar a otro programa en el sidebar mientras se resuelve.")
+        st.stop()
+
+    df_candito = load_candito_data()
+
+    # Planner works even with no data
+    if page == "📋 Hoy te toca":
+        st.markdown("## 📋 Hoy te toca")
+        plan = next_session_plan_candito(df_candito)
+
+        st.markdown(f"### {plan['emoji']} D{plan['day_num']} — {plan['day_name']}")
+        st.caption(f"Tipo: **{plan['day_type'].upper()}**")
+
+        for ex in plan["exercises"]:
+            status_emoji = {"progress": "🟢 ↑", "hold": "🟡 =", "stall": "🔴 !", "new": "⚪"}.get(ex["status"], "")
+            weight_str = f"**{ex['weight']}kg**" if ex["weight"] > 0 else "BW"
+            st.markdown(
+                f"- {ex['name']} — {ex['sets']}×{ex['reps']} @ {weight_str} {status_emoji}"
+            )
+
+    elif page == "📊 Dashboard":
+        st.markdown("## 📊 Dashboard — Candito LP")
+
+        if df_candito.empty:
+            st.info("Sin sesiones todavía. ¡Empieza tu primer Heavy Lower!")
+            st.stop()
+
+        summary = global_summary_candito(df_candito)
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Sesiones", summary["total_sessions"])
+        c2.metric("Volumen total", f"{summary['total_volume_kg']:,} kg")
+        c3.metric("Sets totales", summary["total_sets"])
+        c4.metric("Duración media", f"{summary['avg_duration']} min")
+
+        st.divider()
+
+        # Progression status
+        st.markdown("### 📈 Estado de Progresión")
+        prog = analyze_progression(df_candito)
+        if prog:
+            for lk, info in sorted(prog.items()):
+                status_color = {"progress": "green", "hold": "orange", "stall": "red"}.get(info["status"], "gray")
+                emoji = {"progress": "🟢", "hold": "🟡", "stall": "🔴"}.get(info["status"], "⚪")
+                delta_str = f"+{STARTING_WEIGHTS.get(lk, 0) - info['current_weight']:.1f}" if info["status"] == "progress" else ""
+                col1, col2, col3 = st.columns([3, 2, 2])
+                col1.markdown(f"{emoji} **{lk.replace('_', ' ').title()}**")
+                col2.markdown(f"{info['current_weight']}kg → {info['suggested_weight']}kg")
+                col3.markdown(f"e1RM: {info['e1rm']} | {info['total_reps_done']}/{info['target_reps']} reps")
+        else:
+            st.info("No hay datos de progresión aún.")
+
+        st.divider()
+
+        # Volume by muscle group
+        st.markdown("### 💪 Volumen por Grupo Muscular")
+        mv = muscle_volume_candito(df_candito)
+        if not mv.empty:
+            fig = px.bar(mv, x="muscle_group", y="volume_kg",
+                         color="muscle_group", text="volume_kg")
+            fig.update_layout(**PL_531, showlegend=False, title="Volumen por grupo muscular")
+            st.plotly_chart(fig, use_container_width=True)
+
+        # Weekly volume
+        st.markdown("### 📊 Volumen Semanal")
+        wv = weekly_volume_candito(df_candito)
+        if not wv.empty:
+            fig = px.bar(wv, x="week", y="volume_kg", text="sessions",
+                         color_discrete_sequence=["#22c55e"])
+            fig.update_layout(**PL_531, title="Volumen semanal (kg)")
+            st.plotly_chart(fig, use_container_width=True)
+
+    elif page == "📈 Progresión":
+        st.markdown("## 📈 Progresión de Levantamientos")
+
+        if df_candito.empty:
+            st.info("Sin datos aún.")
+            st.stop()
+
+        prog_df = lift_progression_candito(df_candito)
+        if prog_df.empty:
+            st.info("Sin datos de progresión.")
+            st.stop()
+
+        lifts = sorted(prog_df["lift_key"].unique())
+        selected = st.multiselect("Ejercicios", lifts, default=lifts[:4])
+        filtered = prog_df[prog_df["lift_key"].isin(selected)]
+
+        if not filtered.empty:
+            # Weight progression
+            fig = px.line(filtered, x="date", y="weight", color="lift_key",
+                          markers=True, title="Peso usado por sesión")
+            fig.update_layout(**PL_531)
+            st.plotly_chart(fig, use_container_width=True)
+
+            # e1RM progression
+            fig2 = px.line(filtered, x="date", y="e1rm", color="lift_key",
+                           markers=True, title="e1RM por sesión")
+            fig2.update_layout(**PL_531)
+            st.plotly_chart(fig2, use_container_width=True)
+
+    elif page == "🏋️ Strength Standards":
+        st.markdown("## 🏋️ Strength Standards")
+
+        if df_candito.empty:
+            st.info("Sin datos aún.")
+            st.stop()
+
+        levels = strength_level_candito(df_candito)
+        if not levels:
+            st.info("Sin datos de fuerza.")
+            st.stop()
+
+        for lv in levels:
+            col1, col2, col3 = st.columns([3, 2, 2])
+            level_colors = {"Principiante": "🔵", "Intermedio": "🟢", "Avanzado": "🟠", "Elite": "🔴"}
+            col1.markdown(f"{level_colors.get(lv['level'], '⚪')} **{lv['exercise']}**")
+            col2.markdown(f"e1RM: {lv['e1rm']}kg ({lv['ratio']}×BW)")
+            next_str = f"→ {lv['next_level']} ({lv['pct_to_next']}%)" if lv["pct_to_next"] is not None else "✅ MAX"
+            col3.markdown(f"**{lv['level']}** {next_str}")
+
+            if lv["pct_to_next"] is not None:
+                st.progress(lv["pct_to_next"] / 100)
+
+    elif page == "💪 Sesiones":
+        st.markdown("## 💪 Sesiones")
+
+        if df_candito.empty:
+            st.info("Sin sesiones aún.")
+            st.stop()
+
+        sessions = session_summary_candito(df_candito)
+        for _, row in sessions.iterrows():
+            day_cfg = DAY_CONFIG_CANDITO.get(row["day_num"], {})
+            emoji = day_cfg.get("emoji", "")
+            with st.expander(f"{emoji} {row['date'].strftime('%d/%m')} — {row['day_name']} | {row['volume_kg']:,}kg | {row['duration_min']}min"):
+                session_data = df_candito[df_candito["hevy_id"] == row["hevy_id"]]
+                for _, ex in session_data.iterrows():
+                    role_badge = {"main": "🔴", "secondary": "🟠", "optional": "🔵"}.get(ex["role"], "⚪")
+                    st.markdown(f"{role_badge} **{ex['exercise']}**: {ex['n_sets']} sets · {ex['top_set']} · e1RM {ex['e1rm']}")
+
+    elif page == "🏆 PRs":
+        st.markdown("## 🏆 PRs")
+
+        if df_candito.empty:
+            st.info("Sin PRs aún.")
+            st.stop()
+
+        prs = pr_table_candito(df_candito)
+        if prs.empty:
+            st.info("Sin PRs registrados.")
+        else:
+            for _, row in prs.iterrows():
+                st.markdown(
+                    f"**{row['exercise']}**: {row['max_weight']}kg × {row['max_reps_at_max']} "
+                    f"(e1RM **{row['e1rm']}**) — {row['date'].strftime('%d/%m/%Y')}"
+                )
+
+    st.stop()  # Don't fall through to BBD
+
+# ══════════════════════════════════════════════════════════════════════
 # 🔥 BBD DASHBOARD (existing code below — unchanged)
 # ══════════════════════════════════════════════════════════════════════
 _inject_base_css()
 
-if _bbd_error and not is_531:
+if _bbd_error and not is_531 and not is_candito:
     st.error(f"❌ Error cargando datos BBD: {_bbd_error}")
     st.info("Puedes cambiar a 531 BBB en el sidebar mientras se resuelve.")
     st.stop()
