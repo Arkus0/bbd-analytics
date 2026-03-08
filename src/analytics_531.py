@@ -1083,20 +1083,51 @@ def next_session_plan(df: pd.DataFrame) -> dict:
             "is_amrap": isinstance(reps, str) and "+" in str(reps),
         })
 
-    # ── BBB supplemental ──
-    # Cycle for BBB progression is based on total macro cycles completed
-    bbb_cycle_key = min(macro_num, max(BBB_PCT_PROGRESSION.keys()))
-    bbb_pct = BBB_PCT_PROGRESSION.get(bbb_cycle_key, 0.50)
-    bbb_w = round_to_plate(tm * bbb_pct)
-    bbb_plates = plate_breakdown(bbb_w)
-    plan["bbb"] = {
-        "weight": bbb_w,
-        "sets": 5,
-        "reps": 10,
-        "pct_tm": bbb_pct,
-        "plates": bbb_plates,
-        "plates_str": format_plates(bbb_plates),
-    }
+    # ── Supplemental sets (Forever-aware) ──
+    plan_pos = get_plan_position(total_sessions)
+    supp_key = plan_pos.get("supplemental_template", "bbb_constant")
+    supp_tmpl = SUPPLEMENTAL_TEMPLATES.get(supp_key, {})
+    cycle_in_phase = plan_pos.get("cycle_in_phase", 1) or 1
+    physical_week = plan_pos.get("physical_week", week_type)
+
+    if supp_key == "none" or supp_tmpl.get("sets_per_session", 0) == 0:
+        # Deload / TM test — no supplemental
+        plan["bbb"] = None
+    elif supp_tmpl.get("replaces_main_work"):
+        # 5x5/3/1 etc — supplemental IS the main work, already in working_sets
+        plan["bbb"] = None
+    else:
+        supp_pct = get_supplemental_pct(supp_key, physical_week, cycle_in_phase)
+        if supp_pct is None:
+            # FSL: use first working set percentage
+            supp_pct = get_fsl_pct(week_type)
+
+        # Handle mixed templates (SVR II, Pervertor)
+        if supp_tmpl.get("pct_source") == "mixed" and "week_spec" in supp_tmpl:
+            ws = supp_tmpl["week_spec"].get(physical_week, {})
+            n_sets = ws.get("sets", 5)
+            reps = ws.get("reps", 10)
+            if isinstance(reps, str):
+                reps = 20  # "15-20" → target
+            if ws.get("pct_source") == "fsl":
+                supp_pct = get_fsl_pct(week_type)
+            elif "pct" in ws:
+                supp_pct = ws["pct"]
+        else:
+            n_sets = supp_tmpl.get("sets_per_session", 5)
+            reps = supp_tmpl.get("reps_per_set", 10)
+
+        supp_w = round_to_plate(tm * supp_pct)
+        supp_plates = plate_breakdown(supp_w)
+        plan["bbb"] = {
+            "weight": supp_w,
+            "sets": n_sets,
+            "reps": reps,
+            "pct_tm": supp_pct,
+            "plates": supp_plates,
+            "plates_str": format_plates(supp_plates),
+            "template_name": supp_tmpl.get("name", supp_key),
+        }
 
     return plan
 
@@ -1116,6 +1147,12 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
     macro_num = pos["macro_num"]
     tm_bumps = pos["tm_bumps_completed"]
     week_cfg = CYCLE_WEEKS.get(week_type, CYCLE_WEEKS[1])
+
+    pos = get_plan_position(total_sessions)
+    supp_key = pos.get("supplemental_template", "bbb_constant")
+    supp_tmpl = SUPPLEMENTAL_TEMPLATES.get(supp_key, {})
+    cycle_in_phase = pos.get("cycle_in_phase", 1) or 1
+    physical_week = pos.get("physical_week", week_type)
 
     plans = []
     for day_num in [1, 2, 3, 4]:
@@ -1145,11 +1182,22 @@ def full_week_plan(df: pd.DataFrame) -> list[dict]:
                     "is_amrap": isinstance(s["reps"], str) and "+" in str(s["reps"]),
                 })
 
-            bbb_cycle_key = min(macro_num, max(BBB_PCT_PROGRESSION.keys()))
-            bbb_pct = BBB_PCT_PROGRESSION.get(bbb_cycle_key, 0.50)
-            bbb_w = round_to_plate(tm * bbb_pct)
+            # Supplemental weight (Forever-aware)
+            if supp_key != "none" and not supp_tmpl.get("replaces_main_work"):
+                supp_pct = get_supplemental_pct(supp_key, physical_week, cycle_in_phase)
+                if supp_pct is None:
+                    supp_pct = get_fsl_pct(week_type)
+                if supp_tmpl.get("pct_source") == "mixed" and "week_spec" in supp_tmpl:
+                    ws = supp_tmpl["week_spec"].get(physical_week, {})
+                    if ws.get("pct_source") == "fsl":
+                        supp_pct = get_fsl_pct(week_type)
+                    elif "pct" in ws:
+                        supp_pct = ws["pct"]
+                bbb_w = round_to_plate(tm * supp_pct)
+            else:
+                bbb_w = 0
             day_plan["bbb_weight"] = bbb_w
-            day_plan["bbb_plates"] = format_plates(plate_breakdown(bbb_w))
+            day_plan["bbb_plates"] = format_plates(plate_breakdown(bbb_w)) if bbb_w else ""
 
         plans.append(day_plan)
 

@@ -349,16 +349,16 @@ MAIN_WORK_MODES = {
 YEARLY_PLAN = [
     {
         "block": 1,
-        "name": "Base — Forever BBB",
-        "leader_template": "bbb_forever",
+        "name": "Base — BBB FSL",
+        "leader_template": "bbb_fsl",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
         "anchor_template": "fsl_5x5",
         "anchor_main_work": "pr_set",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "week_order": "351",  # 3/5/1 per book p48-49
-        "notes": "Book p48-49. Forever BBB 60/50/70% with 3/5/1 ordering.",
+        "week_order": "351",  # 3/5/1 per book p53-54
+        "notes": "Book p53-54. BBB FSL 5×10 @ first working set %. TM ≤85% mandatory.",
     },
     {
         "block": 2,
