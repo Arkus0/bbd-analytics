@@ -60,15 +60,15 @@ DAY_CONFIG_CANDITO = {
 STARTING_WEIGHTS = {
     # Heavy day compounds (3×6 or 2×6)
     "zercher_squat":    60.0,
-    "deadlift":         115.0,
-    "bench":            82.5,
-    "pendlay_row":      65.0,
-    "ohp":              47.5,
+    "deadlift":         116.0,
+    "bench":            82.0,
+    "pendlay_row":      66.0,
+    "ohp":              48.0,
     # Control day pause variants (6×4 or 3×4)
-    "pause_zercher":    52.5,
-    "pause_deadlift":   105.0,
-    "spoto_press":      72.5,
-    "pause_pendlay":    57.5,
+    "pause_zercher":    52.0,
+    "pause_deadlift":   106.0,
+    "spoto_press":      72.0,
+    "pause_pendlay":    58.0,
     # Accessories (static starting weights)
     "shrug":            80.0,
     "farmer_walk":      30.0,
@@ -84,17 +84,17 @@ STARTING_WEIGHTS = {
 # If yes → suggest increment. If no → keep weight.
 # If 2 consecutive sessions at same weight with incomplete reps → flag stall.
 PROGRESSION_INCREMENT = {
-    # Upper body: +2.5 kg/week
-    "bench":          2.5,
-    "ohp":            2.5,
-    "pendlay_row":    2.5,
-    "spoto_press":    2.5,
-    "pause_pendlay":  2.5,
-    # Lower body: +5 kg/week
-    "zercher_squat":  5.0,
-    "deadlift":       5.0,
-    "pause_zercher":  5.0,
-    "pause_deadlift": 5.0,
+    # Upper body: +2 kg/week (1kg per side)
+    "bench":          2.0,
+    "ohp":            2.0,
+    "pendlay_row":    2.0,
+    "spoto_press":    2.0,
+    "pause_pendlay":  2.0,
+    # Lower body: +4 kg/week (2kg per side)
+    "zercher_squat":  4.0,
+    "deadlift":       4.0,
+    "pause_zercher":  4.0,
+    "pause_deadlift": 4.0,
 }
 
 # ── Exercise Database ────────────────────────────────────────────────
@@ -300,5 +300,5 @@ LIFT_PAIRS = {
 
 
 def round_to_plate(weight: float) -> float:
-    """Round weight to nearest 2.5kg (Juan's gym plates)."""
-    return round(weight / 2.5) * 2.5
+    """Round weight to nearest 2kg (Juan's smallest increment: 1kg per side)."""
+    return round(weight / 2) * 2
