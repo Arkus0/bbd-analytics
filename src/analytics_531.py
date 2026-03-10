@@ -1816,6 +1816,116 @@ def build_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
     }
 
 
+def build_enriched_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
+    """
+    Annual calendar enriched with Forever plan context (block, phase, template, weights).
+
+    Returns same structure as build_annual_calendar plus:
+      - Each week dict gets: block_num, block_name, phase, phase_label,
+        supplemental_name, main_work_name, tm_pct, week_weights
+      - Top-level "months" key: list of 12 dicts with month_name, primary_block, subtitle
+    """
+    from datetime import date, timedelta
+    from src.config_531 import (
+        get_plan_position, SESSIONS_PER_WEEK, SUPPLEMENTAL_TEMPLATES,
+        MAIN_WORK_MODES, expected_weights, TRAINING_MAX,
+    )
+
+    base = build_annual_calendar(df, year=year)
+    if not base["weeks"]:
+        return base
+
+    # Merge session data from training_calendar (build_annual_calendar strips it)
+    raw_cal = training_calendar(df, weeks_ahead=52)
+    sessions_by_week = {w["abs_week"]: w.get("sessions", []) for w in raw_cal}
+    for w in base["weeks"]:
+        w["sessions"] = sessions_by_week.get(w["abs_week"], [])
+
+    phase_labels = {
+        "pre_plan": "Pre-Plan",
+        "leader": "Leader",
+        "anchor": "Anchor",
+        "7th_week_deload": "7th Week Deload",
+        "7th_week_tm_test": "7th Week TM Test",
+    }
+
+    lifts = list(TRAINING_MAX.keys())
+
+    for w in base["weeks"]:
+        session_offset = (w["abs_week"] - 1) * SESSIONS_PER_WEEK
+        pos = get_plan_position(session_offset)
+
+        block = pos.get("block") or {}
+        w["block_num"] = pos.get("block_num", 0)
+        w["block_name"] = block.get("name", "Pre-Plan") if block else "Pre-Plan"
+        w["phase"] = pos.get("phase", "pre_plan")
+        w["phase_label"] = phase_labels.get(w["phase"], w["phase"])
+
+        supp_key = pos.get("supplemental_template", "")
+        main_key = pos.get("main_work_mode", "")
+        w["supplemental_name"] = SUPPLEMENTAL_TEMPLATES.get(supp_key, {}).get("name", supp_key)
+        w["main_work_name"] = MAIN_WORK_MODES.get(main_key, {}).get("name", main_key)
+        w["tm_pct"] = block.get("tm_pct", 85) if block else 85
+
+        # Expected weights for upcoming weeks (main work sets)
+        if w["status"] == "upcoming" and w["week_type"] in (1, 2, 3):
+            w["week_weights"] = {}
+            for lift in lifts:
+                tm_val = w["tms"].get(lift)
+                if tm_val:
+                    w["week_weights"][lift] = expected_weights(lift, w["week_type"], tm_override=tm_val)
+        else:
+            w["week_weights"] = {}
+
+    # Build month summaries
+    program_start = date(year, 1, 1)
+    month_names = [
+        "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+        "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    ]
+    week_by_abs = {w["abs_week"]: w for w in base["weeks"]}
+
+    months = []
+    for m_idx in range(12):
+        # Find weeks that fall in this month
+        month_weeks = []
+        for w in base["weeks"]:
+            # Map abs_week to approximate date
+            w_date = date(year, 1, 1) + timedelta(days=(w["abs_week"] - 1) * 7)
+            if w_date.month == m_idx + 1:
+                month_weeks.append(w)
+
+        if month_weeks:
+            # Primary block = most common block in month
+            from collections import Counter
+            block_counts = Counter(w["block_num"] for w in month_weeks)
+            primary_block_num = block_counts.most_common(1)[0][0]
+            primary = next((w for w in month_weeks if w["block_num"] == primary_block_num), month_weeks[0])
+            subtitle = f"{month_names[m_idx]} {year}"
+            if primary["block_num"] > 0:
+                subtitle += f" — Bloque {primary['block_num']}: {primary['block_name']} · {primary['phase_label']}"
+            else:
+                subtitle += " — Pre-Plan · Beyond 5/3/1"
+
+            # Detect block transitions
+            block_nums = [w["block_num"] for w in month_weeks]
+            has_transition = len(set(block_nums)) > 1
+        else:
+            subtitle = f"{month_names[m_idx]} {year}"
+            has_transition = False
+
+        months.append({
+            "month_idx": m_idx,
+            "month_name": month_names[m_idx],
+            "subtitle": subtitle,
+            "has_transition": has_transition,
+            "weeks": month_weeks,
+        })
+
+    base["months"] = months
+    return base
+
+
 def get_kanban_data(df: pd.DataFrame) -> dict:
     """
     Get data for Kanban columns: todo, done, upcoming.

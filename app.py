@@ -20,7 +20,7 @@ from src.analytics_531 import (
     next_session_plan, full_week_plan,
     joker_sets_summary, validate_tm, cycle_comparison,
     fsl_compliance,
-    training_calendar, build_annual_calendar,
+    training_calendar, build_annual_calendar, build_enriched_annual_calendar,
     amrap_performance_index, tm_sustainability, joker_analysis,
     bbb_fatigue_trend, true_1rm_trend,
 )
@@ -151,14 +151,21 @@ def _youtube_embed_url(url: str) -> str | None:
     return None
 
 
-def render_monthly_calendar(cal_data: dict):
-    """Render annual calendar as pure HTML tables — works correctly on mobile."""
+def render_monthly_calendar(cal_data: dict, focus_month: int | None = None, show_all_toggle: bool = True):
+    """Render annual calendar as pure HTML tables — works correctly on mobile.
+
+    Args:
+        cal_data: dict from build_annual_calendar / build_enriched_annual_calendar.
+        focus_month: 0-based month index to show (None = all months).
+        show_all_toggle: show the "ver todo el año" toggle when focus_month is set.
+    """
     from calendar import monthcalendar
     from datetime import date
 
     weeks = cal_data["weeks"]
     year = cal_data.get("year", 2026)
     week_data = {w["abs_week"]: w for w in weeks}
+    months_meta = {m["month_idx"]: m for m in cal_data.get("months", [])}
 
     color_map = {
         "5s": "#3b82f6",
@@ -172,11 +179,12 @@ def render_monthly_calendar(cal_data: dict):
     days_header = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
     program_start = date(year, 1, 1)
 
-    is_mobile = st.toggle("📱 Vista compacta (1 mes)", value=False, key="mobile_mode")
-
-    if is_mobile:
-        month_idx = st.selectbox("Mes", range(12), format_func=lambda x: month_names[x], key="month_selector")
-        months_to_show = [month_idx]
+    # Decide which months to render
+    if focus_month is not None:
+        show_all = False
+        if show_all_toggle:
+            show_all = st.toggle("Ver todo el año", value=False, key="cal_show_all")
+        months_to_show = range(12) if show_all else [focus_month]
     else:
         months_to_show = range(12)
 
@@ -185,14 +193,25 @@ def render_monthly_calendar(cal_data: dict):
         "color:#a8a29e;font-weight:600;width:14.28%;"
     )
 
-    for month_idx in months_to_show:
-        month_name = month_names[month_idx]
-        cal_matrix = monthcalendar(year, month_idx + 1)
+    for m_idx in months_to_show:
+        month_name = month_names[m_idx]
+        cal_matrix = monthcalendar(year, m_idx + 1)
+
+        # Month subtitle from enriched data (block context)
+        meta = months_meta.get(m_idx)
+        if meta and meta.get("subtitle"):
+            subtitle_html = (
+                f'<div style="font-size:0.78rem;color:#94a3b8;margin-bottom:6px;">'
+                f'{meta["subtitle"]}</div>'
+            )
+        else:
+            subtitle_html = ""
 
         html = (
             f'<div style="margin-bottom:24px;">'
-            f'<div style="font-size:1rem;font-weight:700;margin-bottom:8px;color:#fafaf9;">'
+            f'<div style="font-size:1rem;font-weight:700;margin-bottom:2px;color:#fafaf9;">'
             f'{month_name} {year}</div>'
+            f'{subtitle_html}'
             f'<table style="border-collapse:collapse;width:100%;table-layout:fixed;">'
             f'<thead><tr>'
         )
@@ -206,7 +225,7 @@ def render_monthly_calendar(cal_data: dict):
                 if day == 0:
                     html += '<td style="padding:3px;"></td>'
                 else:
-                    current_date = date(year, month_idx + 1, day)
+                    current_date = date(year, m_idx + 1, day)
                     days_since_start = (current_date - program_start).days
                     abs_week = (days_since_start // 7) + 1
 
@@ -896,7 +915,6 @@ with st.sidebar:
             "📸 Workout Card",
             "🔍 Sustituciones",
             "📅 Calendario",
-            "🗓️ Vista Anual",
             "🗺️ Plan Forever",
         ], label_visibility="collapsed")
     elif is_candito:
@@ -1438,161 +1456,173 @@ if is_531:
             )
 
     elif page == "📅 Calendario":
-        _sf_header("Calendario Beyond 5/3/1", "📅")
+        from src.config_531 import (
+            get_plan_position, SUPPLEMENTAL_TEMPLATES, MAIN_WORK_MODES,
+            SESSIONS_PER_WEEK,
+        )
 
-        weeks_ahead = st.slider("Semanas a proyectar", 4, 24, 16, key="cal_weeks")
-        cal = training_calendar(df_531, weeks_ahead=weeks_ahead)
+        _sf_header("Calendario 5/3/1", "📅")
 
-        if not cal:
-            st.info("Sin datos para generar calendario.")
-        else:
-            # ── Current position ──
-            current = next((w for w in cal if w["status"] == "current"), None)
-            partial = next((w for w in cal if w["status"] == "partial"), None)
-            active = partial or current
-            if active:
-                tms = active["tms"]
-                st.markdown(
-                    f"**Posición actual:** Macro {active['macro_num']} · "
-                    f"Semana {active['week_in_macro']} ({active['week_name']}) · "
-                    f"Mini-ciclo {'A' if active['mini_cycle'] == 1 else 'B' if active['mini_cycle'] == 2 else '–'} · "
-                    f"TM bumps: {active['tm_bumps']}"
-                )
+        cal_data = build_enriched_annual_calendar(df_531, year=2026)
 
-            st.divider()
-
-            # ── TM Progression Timeline ──
-            st.markdown("### 📈 Progresión de TM")
-            # Build a table showing TM at each bump point
-            bump_points = []
-            seen_bumps = set()
-            for w in cal:
-                b = w["tm_bumps"]
-                if b not in seen_bumps:
-                    seen_bumps.add(b)
-                    tms = w["tms"]
-                    bump_points.append({
-                        "Bumps": b,
-                        "Desde semana": f"W{w['abs_week']}",
-                        "OHP": f"{tms['ohp']:.0f} kg",
-                        "Deadlift": f"{tms['deadlift']:.0f} kg",
-                        "Bench": f"{tms['bench']:.0f} kg",
-                        "Squat": f"{tms['squat']:.0f} kg",
-                    })
-            if bump_points:
-                st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
-
-            st.divider()
-
-            # ── Deload calendar ──
-            deloads = [w for w in cal if w["is_deload"]]
-            if deloads:
-                st.markdown("### 🛌 Semanas de Deload")
-                for d in deloads:
-                    tms = d["tms"]
-                    icon = "✅" if d["status"] == "completed" else "⬜"
-                    st.markdown(
-                        f"{icon} **Semana {d['abs_week']}** (Macro {d['macro_num']}) — "
-                        f"TMs: OHP {tms['ohp']:.0f} · DL {tms['deadlift']:.0f} · "
-                        f"B {tms['bench']:.0f} · S {tms['squat']:.0f}"
-                    )
-                st.divider()
-
-            # ── Full timeline ──
-            st.markdown("### 🗓️ Timeline completa")
-
-            lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
-
-            for w in cal:
-                status = w["status"]
-                if status == "completed":
-                    icon = "✅"
-                    color = "green"
-                elif status == "partial":
-                    icon = "🔶"
-                    color = "orange"
-                elif status == "current":
-                    icon = "👉"
-                    color = "blue"
-                else:
-                    icon = "⬜"
-                    color = "gray"
-
-                deload_tag = " 🛌 **DELOAD**" if w["is_deload"] else ""
-                bump_tag = " ⬆️ *TM bump después*" if w["is_bump_week"] else ""
-
-                tms = w["tms"]
-                tm_str = " · ".join(f"{lift_labels[l]} {tms[l]:.0f}" for l in lift_labels)
-
-                header = (
-                    f"{icon} **W{w['abs_week']}** — M{w['macro_num']}·W{w['week_in_macro']} "
-                    f"**{w['week_name']}** ({w['sessions_done']}/4){deload_tag}{bump_tag}"
-                )
-
-                with st.expander(header, expanded=(status in ("partial", "current"))):
-                    st.caption(f"TMs: {tm_str}")
-
-                    if w["sessions"]:
-                        for s in w["sessions"]:
-                            d = s["date"]
-                            ds = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else str(d)[:10]
-                            lift = lift_labels.get(s["lift"], s["lift"])
-                            amrap = f" — AMRAP: **{s['amrap']}**" if s["amrap"] else ""
-                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;📌 {ds} **{lift}**{amrap}")
-                    elif status == "upcoming":
-                        if w["is_deload"]:
-                            st.caption("Semana ligera: 40/50/60% × 5 reps")
-                        else:
-                            week_type = w["week_type"]
-                            scheme = {1: "65/75/85% × 5", 2: "70/80/90% × 3", 3: "75/85/95% × 5/3/1+"}.get(week_type, "?")
-                            st.caption(f"Esquema: {scheme}")
-
-    # ══════════════════════════════════════════════════════════════════════
-    # 🗓️ VISTA ANUAL
-    # ══════════════════════════════════════════════════════════════════════
-    elif page == "🗓️ Vista Anual":
-        _sf_header("Calendario Anual 5/3/1", "🗓️")
-        
-        cal_data = build_annual_calendar(df_531, year=2026)
-        
         if not cal_data["weeks"]:
             st.info("Sin datos para generar calendario.")
         else:
-            # Summary
-            current = next((w for w in cal_data["weeks"] if w["status"] == "current"), None)
-            if current:
-                st.markdown(
-                    f"**Posición actual:** Macro {current['macro_num']} · "
-                    f"Semana {current['week_in_macro']} ({current['week_name']}) · "
-                    f"Semana {current['abs_week']} de 52"
+            # ── A) Current Position Card ──
+            active = next(
+                (w for w in cal_data["weeks"] if w["status"] in ("partial", "current")),
+                None,
+            )
+            if active:
+                tms = active["tms"]
+                phase_colors = {
+                    "pre_plan": "#f59e0b",
+                    "leader": "#dc2626",
+                    "anchor": "#2563eb",
+                    "7th_week_deload": "#22c55e",
+                    "7th_week_tm_test": "#8b5cf6",
+                }
+                pc = phase_colors.get(active.get("phase", ""), "#64748b")
+                block_line = (
+                    f"Bloque {active['block_num']}: {active['block_name']} · {active['phase_label']}"
+                    if active.get("block_num", 0) > 0
+                    else "Pre-Plan · Beyond 5/3/1"
                 )
-            
+                tm_line = " · ".join(
+                    f"{lbl} {tms[k]:.0f}"
+                    for k, lbl in [("ohp", "OHP"), ("deadlift", "DL"), ("bench", "Bench"), ("squat", "Squat")]
+                )
+                supp_line = (
+                    f"{active.get('supplemental_name', '?')} · {active.get('main_work_name', '?')} · TM {active.get('tm_pct', 85)}%"
+                )
+                st.markdown(
+                    f'<div style="background:linear-gradient(135deg,#1e293b,#334155);padding:20px;border-radius:12px;'
+                    f'border-left:4px solid {pc};margin-bottom:20px;">'
+                    f'<div style="color:{pc};font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;">'
+                    f'{block_line}</div>'
+                    f'<div style="color:#f1f5f9;font-size:22px;font-weight:700;margin-top:6px;">'
+                    f'W{active["abs_week"]} · M{active["macro_num"]}·S{active["week_in_macro"]} · {active["week_name"]}</div>'
+                    f'<div style="color:#94a3b8;font-size:14px;margin-top:8px;">{tm_line}</div>'
+                    f'<div style="color:#cbd5e1;font-size:13px;margin-top:8px;">{supp_line}</div>'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
+
             st.divider()
-            
-            # Calendar
-            render_monthly_calendar(cal_data)
-            
+
+            # ── B) Month Selector + Calendar Grid ──
+            month_names_list = [
+                "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+                "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+            ]
+            # Default to current month
+            from datetime import date as _date
+            default_month = _date.today().month - 1
+
+            selected_month = st.selectbox(
+                "Ir al mes",
+                range(12),
+                format_func=lambda x: month_names_list[x],
+                index=default_month,
+                key="cal_month_sel",
+            )
+
+            render_monthly_calendar(cal_data, focus_month=selected_month, show_all_toggle=True)
+
             st.divider()
-            
-            # TM Progression table
-            st.markdown("### 📈 Progresión de Training Maxes")
-            bump_points = []
-            seen_bumps = set()
-            for w in cal_data["weeks"]:
-                b = w["tm_bumps"]
-                if b not in seen_bumps:
-                    seen_bumps.add(b)
-                    tms = w["tms"]
-                    bump_points.append({
-                        "Bumps": b,
-                        "Desde": f"W{w['abs_week']}",
-                        "OHP": f"{tms['ohp']:.0f}",
-                        "DL": f"{tms['deadlift']:.0f}",
-                        "Bench": f"{tms['bench']:.0f}",
-                        "Squat": f"{tms['squat']:.0f}",
-                    })
-            if bump_points:
-                st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
+
+            # ── C) Week Detail for Selected Month ──
+            months_data = cal_data.get("months", [])
+            month_meta = next((m for m in months_data if m["month_idx"] == selected_month), None)
+            month_weeks = month_meta["weeks"] if month_meta else []
+
+            if month_weeks:
+                st.markdown(f"### Detalle: {month_names_list[selected_month]}")
+
+                lift_labels = {"ohp": "OHP", "deadlift": "Deadlift", "bench": "Bench", "squat": "Zercher"}
+
+                for w in month_weeks:
+                    status = w["status"]
+                    if status == "completed":
+                        icon = "✅"
+                    elif status == "partial":
+                        icon = "🔶"
+                    elif status == "current":
+                        icon = "👉"
+                    else:
+                        icon = "⬜"
+
+                    deload_tag = " 🛌" if w["is_deload"] else ""
+                    bump_tag = " ⬆️" if w["is_bump_week"] else ""
+
+                    # Block context in header
+                    if w.get("block_num", 0) > 0:
+                        block_tag = f" · B{w['block_num']} {w['phase_label']}"
+                    else:
+                        block_tag = " · Pre-Plan"
+
+                    header = (
+                        f"{icon} **W{w['abs_week']}** {w['week_name']} "
+                        f"({w['sessions_done']}/4){block_tag}{deload_tag}{bump_tag}"
+                    )
+
+                    with st.expander(header, expanded=(status in ("partial", "current"))):
+                        # TMs + template info
+                        tms = w["tms"]
+                        tm_str = " · ".join(f"{lift_labels[l]} {tms[l]:.0f}" for l in lift_labels)
+                        st.caption(f"TMs: {tm_str}")
+                        if w.get("supplemental_name"):
+                            st.caption(
+                                f"Template: {w['supplemental_name']} · "
+                                f"Main: {w.get('main_work_name', '?')} · "
+                                f"TM {w.get('tm_pct', 85)}%"
+                            )
+
+                        # Past sessions
+                        if w.get("sessions"):
+                            for s in w["sessions"]:
+                                d = s["date"]
+                                ds = d.strftime("%d/%m/%Y") if hasattr(d, "strftime") else str(d)[:10]
+                                lift = lift_labels.get(s["lift"], s["lift"])
+                                amrap = f" — AMRAP: **{s['amrap']}**" if s["amrap"] else ""
+                                st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;📌 {ds} **{lift}**{amrap}")
+
+                        # Upcoming: show expected weights
+                        elif status == "upcoming":
+                            if w["is_deload"]:
+                                st.caption("Semana ligera: 40/50/60% × 5 reps")
+                            else:
+                                ww = w.get("week_weights", {})
+                                if ww:
+                                    for lift_key, lbl in lift_labels.items():
+                                        sets = ww.get(lift_key, [])
+                                        if sets:
+                                            parts = [f"{s['weight']:.0f}kg ×{s['reps']}" for s in sets]
+                                            st.markdown(f"&nbsp;&nbsp;&nbsp;&nbsp;**{lbl}:** {' → '.join(parts)}")
+                                else:
+                                    week_type = w["week_type"]
+                                    scheme = {1: "65/75/85% × 5", 2: "70/80/90% × 3", 3: "75/85/95% × 5/3/1+"}.get(week_type, "?")
+                                    st.caption(f"Esquema: {scheme}")
+
+            # ── D) TM Progression (collapsible) ──
+            with st.expander("📈 Progresión de TMs"):
+                bump_points = []
+                seen_bumps = set()
+                for w in cal_data["weeks"]:
+                    b = w["tm_bumps"]
+                    if b not in seen_bumps:
+                        seen_bumps.add(b)
+                        tms = w["tms"]
+                        bump_points.append({
+                            "Bumps": b,
+                            "Desde": f"W{w['abs_week']}",
+                            "OHP": f"{tms['ohp']:.0f}",
+                            "DL": f"{tms['deadlift']:.0f}",
+                            "Bench": f"{tms['bench']:.0f}",
+                            "Squat": f"{tms['squat']:.0f}",
+                        })
+                if bump_points:
+                    st.dataframe(pd.DataFrame(bump_points), use_container_width=True, hide_index=True)
 
     # ══════════════════════════════════════════════════════════════════════
     # 🗺️ PLAN FOREVER
