@@ -160,7 +160,7 @@ def render_monthly_calendar(cal_data: dict, focus_month: int | None = None, show
         show_all_toggle: show the "ver todo el año" toggle when focus_month is set.
     """
     from calendar import monthcalendar
-    from datetime import date
+    from datetime import date, timedelta
 
     weeks = cal_data["weeks"]
     year = cal_data.get("year", 2026)
@@ -177,7 +177,18 @@ def render_monthly_calendar(cal_data: dict, focus_month: int | None = None, show
     month_names = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
                    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     days_header = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"]
-    program_start = date(year, 1, 1)
+
+    # Build date → abs_week lookup from real/projected date ranges
+    date_to_week: dict[date, int] = {}
+    has_date_info = any(w.get("start_date") for w in weeks)
+    if has_date_info:
+        for w in weeks:
+            sd, ed = w.get("start_date"), w.get("end_date")
+            if sd and ed:
+                d = sd
+                while d <= ed:
+                    date_to_week[d] = w["abs_week"]
+                    d += timedelta(days=1)
 
     # Decide which months to render
     if focus_month is not None:
@@ -226,10 +237,13 @@ def render_monthly_calendar(cal_data: dict, focus_month: int | None = None, show
                     html += '<td style="padding:3px;"></td>'
                 else:
                     current_date = date(year, m_idx + 1, day)
-                    days_since_start = (current_date - program_start).days
-                    abs_week = (days_since_start // 7) + 1
+                    if has_date_info:
+                        abs_week = date_to_week.get(current_date)
+                    else:
+                        # Fallback: old fixed-offset logic
+                        abs_week = ((current_date - date(year, 1, 1)).days // 7) + 1
 
-                    if abs_week in week_data:
+                    if abs_week and abs_week in week_data:
                         w = week_data[abs_week]
                         color = color_map.get(w["type"], "#6b7280")
                         is_current = w["status"] == "current"
@@ -1495,6 +1509,21 @@ if is_531:
                 supp_line = (
                     f"{active.get('supplemental_name', '?')} · {active.get('main_work_name', '?')} · TM {active.get('tm_pct', 85)}%"
                 )
+                # Pace line from real training data
+                pace = cal_data.get("pace", {})
+                pace_parts = []
+                avg_d = pace.get("avg_days_per_week")
+                if avg_d and not pace.get("is_fallback_pace"):
+                    pace_parts.append(f"Ritmo: {avg_d:.1f} dias/semana")
+                proj_end = pace.get("projected_end_date")
+                if proj_end:
+                    _mnames = ["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"]
+                    pace_parts.append(f"Fin estimado: {proj_end.day} {_mnames[proj_end.month-1]} {proj_end.year}")
+                pace_line = " · ".join(pace_parts) if pace_parts else ""
+                pace_html = (
+                    f'<div style="color:#64748b;font-size:12px;margin-top:10px;">{pace_line}</div>'
+                    if pace_line else ""
+                )
                 st.markdown(
                     f'<div style="background:linear-gradient(135deg,#1e293b,#334155);padding:20px;border-radius:12px;'
                     f'border-left:4px solid {pc};margin-bottom:20px;">'
@@ -1504,6 +1533,7 @@ if is_531:
                     f'W{active["abs_week"]} · M{active["macro_num"]}·S{active["week_in_macro"]} · {active["week_name"]}</div>'
                     f'<div style="color:#94a3b8;font-size:14px;margin-top:8px;">{tm_line}</div>'
                     f'<div style="color:#cbd5e1;font-size:13px;margin-top:8px;">{supp_line}</div>'
+                    f'{pace_html}'
                     f'</div>',
                     unsafe_allow_html=True,
                 )

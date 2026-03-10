@@ -1,76 +1,84 @@
-# Plan: Fusionar Calendario + Vista Anual con contexto Forever
+# Plan: Calendario basado en fechas reales y ritmo de entrenamiento
 
 ## Contexto
 
-Actualmente hay 3 pestañas separadas para consultar el plan 5/3/1:
-- **📅 Calendario**: timeline lineal de ~16 semanas con expanders
-- **🗓️ Vista Anual**: cuadrícula de 12 meses (dots color-coded por tipo de semana)
-- **🗺️ Plan Forever**: bloques del plan anual con progress bars y templates
+El commit anterior fusionó Calendario + Vista Anual en una sola pestaña con contexto Forever. Pero el calendario tiene un problema fundamental: **asume que el programa empezó el 1 de enero y que cada semana de entrenamiento dura exactamente 7 días**.
 
-El problema: para saber "qué me toca en mayo" hay que saltar entre pestañas. El calendario no muestra qué bloque/template/pesos corresponden, y hay dos calendarios redundantes.
+Realidad:
+- El programa empezó el **2026-02-20** (`PROGRAM_START_531` existe en config pero no se usa)
+- Juan entrena cuando puede — una "semana" de 4 sesiones puede durar 5, 6, 8+ días
+- El calendario muestra enero-febrero con dots de entrenamiento que no existen
+- Las proyecciones futuras derivan de la realidad conforme pasan las semanas
 
 ## Solución
 
-Fusionar **Calendario** + **Vista Anual** en una sola pestaña `📅 Calendario` que integre el contexto del plan Forever. Mantener **🗺️ Plan Forever** como pestaña separada (vista estructural de bloques).
+Anclar cada semana de entrenamiento a fechas reales (pasadas) o proyectadas (futuras), usando el ritmo real observado.
 
 ---
 
 ## Cambios
 
-### 1. `src/analytics_531.py` — Nueva función `build_enriched_annual_calendar()`
+### 1. `src/analytics_531.py` — Nueva función `attach_calendar_dates(calendar)`
 
-Enriquecer cada semana del calendario anual con datos del plan Forever:
+Función pura que anota cada week dict con `start_date` / `end_date`:
 
+| Tipo de semana | `start_date` | `end_date` |
+|---|---|---|
+| **Completed** (tiene sesiones) | Fecha de primera sesión | Fecha de última sesión |
+| **Current/Partial** | Fecha de primera sesión (o `today()`) | `today()` |
+| **Future** | `end_date` anterior + 1 día | `start_date + avg_days_per_week - 1` |
+
+**Cálculo de ritmo:**
 ```python
-def build_enriched_annual_calendar(df, year=2026) -> dict:
+if len(completed_weeks) >= 2:
+    total_days = (last_week.end_date - first_week.start_date).days
+    avg_days_per_week = total_days / (len(completed_weeks) - 1)
+else:
+    avg_days_per_week = 7.0  # fallback
 ```
 
-- Llama a `build_annual_calendar(df, year)` internamente
-- Para cada semana, calcula `get_plan_position(session_offset)` donde `session_offset = (abs_week - 1) * SESSIONS_PER_WEEK`
-- Añade a cada week dict: `block_num`, `block_name`, `phase`, `phase_label`, `supplemental_name`, `main_work_name`, `tm_pct`
-- Añade al resultado un dict `months`: para cada mes, el bloque predominante y si hay transición de bloque
-- Para semanas upcoming, añade `expected_weights` por lift usando `expected_weights(lift, week_type, tm)`
+Si no hay sesiones (0 completadas), se ancla semana 1 a `PROGRAM_START_531` con ritmo 7.0.
 
-Funciones existentes `build_annual_calendar` y `training_calendar` no se modifican (otros consumidores las usan).
+**Retorna:** `(calendar_con_fechas, pace_info)` donde `pace_info` contiene:
+- `avg_days_per_week`: ritmo real (ej. 6.2 días)
+- `projected_end_date`: fecha estimada de fin del último bloque
+- `is_fallback_pace`: True si usa el 7.0 por defecto
 
-### 2. `app.py` — Pestaña `📅 Calendario` (reemplaza las dos)
+**Ubicación:** Justo después de `training_calendar()` (~línea 1760), antes de `build_annual_calendar()`.
 
-**Eliminar:** pestaña `🗓️ Vista Anual` del radio y su bloque `elif` (líneas 1553-1595).
+### 2. `src/analytics_531.py` — Actualizar `build_enriched_annual_calendar()`
 
-**Nuevo layout de `📅 Calendario`:**
+Cambios en la función existente:
+- Después de obtener `raw_cal`, llamar `attach_calendar_dates(raw_cal)`
+- Propagar `start_date`/`end_date` del raw_cal a `base["weeks"]` (match por `abs_week`)
+- **Reemplazar el mapeo de meses**: usar `w["start_date"].month` en vez de `date(year,1,1) + timedelta(abs_week*7)`
+- Añadir `base["pace"] = pace_info` al dict retornado
 
-**A) Tarjeta de posición actual** (reusar estilo gradient de Plan Forever)
-- Semana actual, macro, tipo (5s/3s/531/deload)
-- Bloque Forever + fase (Leader/Anchor) + template suplementario + main work mode
-- TMs actuales de los 4 lifts
+### 3. `app.py` — Actualizar `render_monthly_calendar()`
 
-**B) Selector de mes** + cuadrícula mensual
-- `st.selectbox("Mes", ...)` siempre visible (no solo en mobile)
-- Toggle "Ver año completo" para mostrar los 12 meses
-- Cada mes tiene un subtítulo: `"Mayo 2026 — Bloque 2: Fuerza-Volumen (BBS) · Leader"`
-- La cuadrícula de dots existente se mantiene (colores por tipo de semana)
+**Eliminar:** `program_start = date(year, 1, 1)` y el cálculo `abs_week = (days_since_start // 7) + 1`
 
-**C) Detalle semanal del mes seleccionado**
-- Por cada semana del mes, un expander con:
-  - Header: `W{n} — {week_name} ({sessions_done}/4) · Bloque {N}: {name} · {phase} · {template}`
-  - TMs de los 4 lifts
-  - Si completed/partial: sesiones reales (fecha, lift, AMRAP)
-  - Si upcoming: **pesos esperados** por lift (las 3 series de trabajo + suplementario)
-  - Auto-expand semana actual
+**Añadir:** lookup `date → abs_week` construido desde los rangos `start_date`/`end_date` de cada semana:
+```python
+date_to_week = {}
+for w in weeks:
+    if "start_date" in w and "end_date" in w:
+        d = w["start_date"]
+        while d <= w["end_date"]:
+            date_to_week[d] = w["abs_week"]
+            d += timedelta(days=1)
+```
 
-**D) Progresión de TMs** (en expander colapsable al fondo)
-- Tabla de bump points con TMs (una sola copia, no duplicada)
+Días no mapeados (enero, gaps entre semanas) → celdas grises sin dots. Esto es correcto: no había entrenamiento.
 
-### 3. `app.py` — `render_monthly_calendar()` (líneas 154-265)
+**Fallback:** Si no hay `start_date` en los datos, caer al cálculo viejo (backward-compatible).
 
-Evolucionar para aceptar datos enriquecidos:
-- Añadir subtítulo de bloque sobre cada mes
-- Aceptar parámetro `focus_month` para renderizar solo un mes o todos
-- Mantener colores y dots existentes
+### 4. `app.py` — Ritmo en tarjeta de posición actual
 
-### 4. `app.py` — Sidebar radio (línea 886-901)
-
-Eliminar `"🗓️ Vista Anual"` de la lista.
+Añadir línea de ritmo al card existente:
+```
+Ritmo: 6.2 días/semana · Fin estimado: 15 Dic 2026
+```
 
 ---
 
@@ -78,27 +86,34 @@ Eliminar `"🗓️ Vista Anual"` de la lista.
 
 | Archivo | Cambio |
 |---------|--------|
-| `src/analytics_531.py` | Nueva `build_enriched_annual_calendar()` (~50 líneas) |
-| `app.py` líneas 154-265 | Actualizar `render_monthly_calendar()` para subtítulos de bloque y `focus_month` |
-| `app.py` líneas 886-901 | Eliminar `"🗓️ Vista Anual"` del radio |
-| `app.py` líneas 1440-1549 | Reescribir pestaña Calendario con nuevo layout |
-| `app.py` líneas 1553-1595 | Eliminar bloque Vista Anual |
+| `src/analytics_531.py` | Nueva `attach_calendar_dates()` (~45 líneas) |
+| `src/analytics_531.py` | Actualizar `build_enriched_annual_calendar()` — llamar attach, fix month mapping |
+| `app.py` `render_monthly_calendar()` | Reemplazar mapeo date→abs_week con lookup basado en fechas reales |
+| `app.py` tarjeta de posición | Añadir línea de ritmo y fecha fin estimada |
 
-## Funciones existentes a reutilizar
+## Funciones/constantes a reutilizar
 
-- `training_calendar()` — `analytics_531.py:1649`
-- `build_annual_calendar()` — `analytics_531.py:1762`
-- `get_plan_position()` — `config_531.py`
-- `get_effective_tm()` — `config_531.py`
-- `expected_weights()` — `config_531.py`
-- `YEARLY_PLAN`, `SUPPLEMENTAL_TEMPLATES`, `MAIN_WORK_MODES` — `config_531.py`
-- `render_monthly_calendar()` — `app.py:154`
+- `PROGRAM_START_531 = "2026-02-20"` — `config_531.py:20` (por fin se usa)
+- `training_calendar()` — `analytics_531.py:~1660` (ya retorna sessions con dates reales)
+- `build_enriched_annual_calendar()` — `analytics_531.py:~1819` (la actualizamos)
+- `render_monthly_calendar()` — `app.py:154` (la actualizamos)
+
+## Edge cases
+
+| Escenario | Manejo |
+|---|---|
+| 0 sesiones (programa nuevo) | Anclar W1 a `PROGRAM_START_531`, ritmo 7.0 |
+| 1 semana completada | Ritmo 7.0 (no se puede calcular intervalo de 1 punto) |
+| 2-3 semanas | Ritmo ruidoso pero mejor que hardcoded 7 |
+| Vacaciones (gap largo) | Infla el ritmo medio — reflejo real de la cadencia |
+| Semana cruza límite de mes | Se asigna al mes de `start_date` |
+| Fechas antes de PROGRAM_START | Sin dots, celdas grises (correcto) |
 
 ## Verificación
 
-1. `python -c "import ast; ast.parse(open('app.py').read()); ast.parse(open('src/analytics_531.py').read())"` — sin errores de sintaxis
-2. Abrir dashboard localmente: `streamlit run app.py`
-3. Comprobar que el selector de mes muestra el subtítulo del bloque Forever
-4. Navegar a un mes futuro (ej. mayo) y verificar que muestra pesos esperados
-5. Verificar que la pestaña Plan Forever sigue funcionando independiente
-6. Comprobar que no hay pestaña Vista Anual separada
+1. `ast.parse()` en `app.py` y `analytics_531.py`
+2. Test unitario: `build_enriched_annual_calendar(df_empty)` — verificar que W1 empieza en 2026-02-20
+3. Test con datos reales: verificar que las semanas pasadas tienen fechas coherentes con sesiones
+4. Verificar en el calendario que enero aparece vacío (sin dots) y febrero empieza el ~20
+5. Verificar que la tarjeta muestra ritmo y fecha estimada de fin
+6. Navegar a un mes futuro y confirmar que las semanas se proyectan con el ritmo real

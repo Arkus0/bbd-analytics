@@ -1759,6 +1759,96 @@ def training_calendar(df: pd.DataFrame, weeks_ahead: int = 16) -> list[dict]:
     return calendar
 
 
+def attach_calendar_dates(calendar: list[dict]) -> tuple[list[dict], dict]:
+    """
+    Annotate each week dict with start_date/end_date based on real session
+    dates (past) or pace projection (future).
+
+    Returns:
+        (calendar_with_dates, pace_info)
+    """
+    from datetime import date, timedelta
+    from src.config_531 import PROGRAM_START_531
+
+    program_start = date.fromisoformat(PROGRAM_START_531)
+
+    # --- Assign dates from real sessions for completed/partial/current weeks ---
+    for w in calendar:
+        sessions = w.get("sessions", [])
+        if sessions:
+            dates = []
+            for s in sessions:
+                d = s["date"]
+                if isinstance(d, str):
+                    d = date.fromisoformat(d[:10])
+                elif hasattr(d, "date"):  # datetime → date
+                    d = d.date()
+                dates.append(d)
+            w["start_date"] = min(dates)
+            w["end_date"] = max(dates)
+        else:
+            w["start_date"] = None
+            w["end_date"] = None
+
+    # --- Compute pace from completed weeks with real dates ---
+    dated_weeks = [w for w in calendar if w["start_date"] is not None]
+    if len(dated_weeks) >= 2:
+        first_start = dated_weeks[0]["start_date"]
+        last_start = dated_weeks[-1]["start_date"]
+        total_days = (last_start - first_start).days
+        avg_days = total_days / (len(dated_weeks) - 1)
+        avg_days = max(avg_days, 4.0)  # floor: can't train faster than ~4 days/week
+        is_fallback = False
+    else:
+        avg_days = 7.0
+        is_fallback = True
+
+    # --- Fill in dates for undated weeks ---
+    # Find anchor: last dated week, or use PROGRAM_START_531
+    if dated_weeks:
+        anchor_date = dated_weeks[-1]["end_date"]
+        anchor_idx = calendar.index(dated_weeks[-1])
+    else:
+        # No sessions yet — anchor week 1 to program start
+        anchor_date = program_start - timedelta(days=1)  # so W1 starts at program_start
+        anchor_idx = -1
+
+    # Forward-fill future weeks
+    cursor = anchor_date
+    for w in calendar[anchor_idx + 1:]:
+        if w["start_date"] is None:
+            w["start_date"] = cursor + timedelta(days=1)
+            w["end_date"] = w["start_date"] + timedelta(days=int(avg_days) - 1)
+            cursor = w["end_date"]
+
+    # Back-fill any early undated weeks (edge case: current week has no sessions yet)
+    for i in range(len(calendar)):
+        w = calendar[i]
+        if w["start_date"] is None:
+            if w["status"] == "current":
+                w["start_date"] = date.today()
+                w["end_date"] = date.today()
+            elif i > 0 and calendar[i - 1]["end_date"]:
+                w["start_date"] = calendar[i - 1]["end_date"] + timedelta(days=1)
+                w["end_date"] = w["start_date"] + timedelta(days=int(avg_days) - 1)
+            else:
+                w["start_date"] = program_start
+                w["end_date"] = program_start + timedelta(days=int(avg_days) - 1)
+
+    # Projected end date = end_date of last week
+    projected_end = calendar[-1]["end_date"] if calendar else None
+
+    pace_info = {
+        "avg_days_per_week": round(avg_days, 1),
+        "completed_weeks_count": len(dated_weeks),
+        "projected_end_date": projected_end,
+        "is_fallback_pace": is_fallback,
+        "program_start": program_start,
+    }
+
+    return calendar, pace_info
+
+
 def build_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
     """
     Build annual calendar grid ready for visualization.
@@ -1836,10 +1926,15 @@ def build_enriched_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
         return base
 
     # Merge session data from training_calendar (build_annual_calendar strips it)
+    # and attach real calendar dates based on actual session pace
     raw_cal = training_calendar(df, weeks_ahead=52)
-    sessions_by_week = {w["abs_week"]: w.get("sessions", []) for w in raw_cal}
+    raw_cal, pace_info = attach_calendar_dates(raw_cal)
+    sessions_by_week = {w["abs_week"]: w for w in raw_cal}
     for w in base["weeks"]:
-        w["sessions"] = sessions_by_week.get(w["abs_week"], [])
+        raw_w = sessions_by_week.get(w["abs_week"], {})
+        w["sessions"] = raw_w.get("sessions", [])
+        w["start_date"] = raw_w.get("start_date")
+        w["end_date"] = raw_w.get("end_date")
 
     phase_labels = {
         "pre_plan": "Pre-Plan",
@@ -1877,27 +1972,25 @@ def build_enriched_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
         else:
             w["week_weights"] = {}
 
-    # Build month summaries
-    program_start = date(year, 1, 1)
+    # Build month summaries using real/projected dates (not hardcoded Jan 1)
+    from collections import Counter
     month_names = [
         "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
     ]
-    week_by_abs = {w["abs_week"]: w for w in base["weeks"]}
+
+    # Group weeks by the month of their start_date
+    month_buckets: dict[int, list] = {i: [] for i in range(12)}
+    for w in base["weeks"]:
+        sd = w.get("start_date")
+        if sd and sd.year == year:
+            month_buckets[sd.month - 1].append(w)
 
     months = []
     for m_idx in range(12):
-        # Find weeks that fall in this month
-        month_weeks = []
-        for w in base["weeks"]:
-            # Map abs_week to approximate date
-            w_date = date(year, 1, 1) + timedelta(days=(w["abs_week"] - 1) * 7)
-            if w_date.month == m_idx + 1:
-                month_weeks.append(w)
+        month_weeks = month_buckets[m_idx]
 
         if month_weeks:
-            # Primary block = most common block in month
-            from collections import Counter
             block_counts = Counter(w["block_num"] for w in month_weeks)
             primary_block_num = block_counts.most_common(1)[0][0]
             primary = next((w for w in month_weeks if w["block_num"] == primary_block_num), month_weeks[0])
@@ -1907,7 +2000,6 @@ def build_enriched_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
             else:
                 subtitle += " — Pre-Plan · Beyond 5/3/1"
 
-            # Detect block transitions
             block_nums = [w["block_num"] for w in month_weeks]
             has_transition = len(set(block_nums)) > 1
         else:
@@ -1923,6 +2015,7 @@ def build_enriched_annual_calendar(df: pd.DataFrame, year: int = 2026) -> dict:
         })
 
     base["months"] = months
+    base["pace"] = pace_info
     return base
 
 
