@@ -349,16 +349,16 @@ MAIN_WORK_MODES = {
 YEARLY_PLAN = [
     {
         "block": 1,
-        "name": "Base — BBB FSL",
-        "leader_template": "bbb_fsl",
+        "name": "Base — BBB Challenge",
+        "leader_template": "bbb_challenge",
         "leader_main_work": "5s_pro",
         "leader_cycles": 2,
         "anchor_template": "fsl_5x5",
         "anchor_main_work": "pr_set",
         "anchor_cycles": 1,
         "tm_pct": 85,
-        "week_order": "351",  # 3/5/1 per book p53-54
-        "notes": "Book p53-54. BBB FSL 5×10 @ first working set %. TM ≤85% mandatory.",
+        "week_order": "351",  # 3/5/1 per book p52-53
+        "notes": "Book p52-53. BBB Challenge 5×10 @ 50%→60%. Conservative base before heavier blocks.",
     },
     {
         "block": 2,
