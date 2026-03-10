@@ -190,7 +190,7 @@ SUPPLEMENTAL_TEMPLATES = {
         "sets_per_session": 5,
         "reps_per_set": 10,
         # Book: cycle 1=50%, cycle 2=60%, cycle 3=70%
-        "pct_by_cycle": {1: 0.50, 2: 0.60},
+        "pct_by_cycle": {1: 0.60, 2: 0.60},
         "pct_source": "fixed_pct",
     },
     "fsl_5x5": {
