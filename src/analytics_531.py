@@ -1523,11 +1523,14 @@ def _get_manual_accessories(routine_id: str, day_num: int, main_tid: str,
         tid = ex.get("exercise_template_id", "")
         if tid not in managed_tids:
             # Preserve this exercise as-is (sets, rest, notes, etc.)
+            _ALLOWED_SET_KEYS = {"type", "weight_kg", "reps", "distance_meters",
+                                 "duration_seconds", "rpe"}
             manual.append({
                 "exercise_template_id": tid,
                 "rest_seconds": ex.get("rest_seconds", 60),
                 "sets": [
-                    {k: v for k, v in s.items() if v is not None}
+                    {k: v for k, v in s.items()
+                     if k in _ALLOWED_SET_KEYS and v is not None}
                     for s in ex.get("sets", [])
                 ],
             })
