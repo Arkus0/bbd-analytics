@@ -802,6 +802,13 @@ _ACC_TIDS = {
     "dips":             "6FCD7755",
     "cable_crunch":     "23A48484",
     "step_up":          "BF6ECE89",
+    # Legacy accessories — managed so they get cleaned out of routines
+    "shrug":            "0B841777",
+    "skullcrusher":     "875F585F",
+    "barbell_curl":     "A5AC6449",
+    "plank":            "C6C9B8A0",
+    "tricep_pushdown":  "21310F5F",
+    "preacher_curl":    "1E9A6B8E",
 }
 
 
