@@ -762,6 +762,11 @@ EXERCISE_DB_531 = {
         "role": "accessory",
         "muscle_group": "Piernas",
     },
+    "018ADC12": {
+        "name": "Pendlay Row (Barbell)",
+        "role": "accessory",
+        "muscle_group": "Espalda",
+    },
 }
 
 # Workouts done without routine_id that should be included
@@ -787,57 +792,171 @@ DAY_ROUTINE_MAP = {
 }
 
 # Accessory templates per day (kept static, Juan adjusts weights manually)
+# ── Exercise template IDs for accessories ────────────────────────────
+_ACC_TIDS = {
+    "band_pull_apart":  "E8D86EE8",
+    "face_pull":        "BE640BA0",
+    "pull_up":          "1B2B1E7C",
+    "dumbbell_row":     "F1E57334",
+    "pendlay_row":      "018ADC12",
+    "dips":             "6FCD7755",
+    "cable_crunch":     "23A48484",
+    "step_up":          "BF6ECE89",
+}
+
+
+def _acc(tid_key: str, sets_reps: list[tuple], rest: int = 60,
+         weight_kg: float | None = None) -> dict:
+    """Helper to build an accessory exercise dict for Hevy routines."""
+    sets = []
+    for reps, w in sets_reps:
+        s = {"type": "normal", "reps": reps}
+        if w is not None:
+            s["weight_kg"] = w
+        sets.append(s)
+    return {
+        "exercise_template_id": _ACC_TIDS[tid_key],
+        "rest_seconds": rest,
+        "sets": sets,
+    }
+
+
+# ── Phase-aware assistance configuration ─────────────────────────────
+# Philosophy: back/pull emphasis (band pull-aparts, pull-ups, rows, face pulls).
+# Leader (BBB/BBS/Pervertor) = high supplemental volume → conservative assistance.
+# Anchor (FSL 5x5) = low supplemental volume → more assistance allowed.
+#
+# Wendler BBB assistance: Push 25-50 | Pull 25-50 | SL/Core 0-50
+# Wendler Anchor assistance: Push 50-100 | Pull 50-100 | SL/Core 50-100
+# We bias pull toward the top of the range given Juan's back focus.
+
+def get_day_accessories(day_num: int, plan_pos: dict | None = None) -> list:
+    """
+    Return accessory exercises for a given day, adjusted by training phase.
+
+    Leader phases (high supplemental volume):
+      - Pull always present (band pull-aparts + 1 pull movement)
+      - Push minimal (dips on lower days only)
+      - SL/Core: cable crunch on most days
+
+    Anchor phases (low supplemental volume):
+      - Pull increased (pull-ups + rows + face pulls)
+      - Push: dips on all days
+      - SL/Core: cable crunch + step-ups on lower days
+
+    Deload/TM Test: minimal (band pull-aparts only).
+    """
+    phase = (plan_pos or {}).get("phase", "leader")
+
+    # ── Deload / TM Test: minimal ────────────────────────────────────
+    if phase in ("7th_week_deload", "7th_week_tm_test"):
+        return [
+            _acc("band_pull_apart", [(15, None)] * 3),
+        ]
+
+    # ── Leader phases (BBB, BBS, Pervertor, 5x5/3/1) ────────────────
+    # High supplemental volume → conservative assistance (25-50 per category)
+    # Pull emphasis: always band pull-aparts + one vertical/horizontal pull
+    if phase in ("leader", "pre_plan"):
+        if day_num == 1:  # OHP
+            return [
+                # Pull (~60 reps): pull-aparts superset w/ BBB + face pulls
+                _acc("band_pull_apart", [(15, None)] * 3),
+                _acc("face_pull", [(15, 40)] * 2, rest=60),
+                # Push: nothing extra (5x10 OHP is enough pressing)
+                # Core (~45 reps)
+                _acc("cable_crunch", [(15, 70)] * 3, rest=60),
+            ]
+        elif day_num == 2:  # Deadlift
+            return [
+                # Pull (~55 reps): pull-aparts + pull-ups (no heavy rows on DL day)
+                _acc("band_pull_apart", [(15, None)] * 3),
+                _acc("pull_up", [(10, None)] * 1, rest=90),
+                # Push: nothing (save energy for DL volume)
+                # Core (~45 reps)
+                _acc("cable_crunch", [(15, 70)] * 3, rest=60),
+            ]
+        elif day_num == 3:  # Bench
+            return [
+                # Pull (~75 reps): face pulls + pull-ups (bench doesn't tax back)
+                _acc("face_pull", [(15, 40)] * 3, rest=60),
+                _acc("pull_up", [(10, None)] * 1, rest=90),
+                _acc("band_pull_apart", [(15, None)] * 2),
+                # Push: nothing extra (5x10 bench is enough)
+                # Core (~45 reps)
+                _acc("cable_crunch", [(15, 70)] * 3, rest=60),
+            ]
+        elif day_num == 4:  # Zercher Squat
+            return [
+                # Pull (~60 reps): pull-aparts + DB rows (Zercher less taxing on back than DL)
+                _acc("band_pull_apart", [(15, None)] * 3),
+                _acc("dumbbell_row", [(12, 32)] * 2, rest=60),
+                # Push (~40 reps): dips (lower body day, can add push)
+                _acc("dips", [(20, None)] * 2, rest=60),
+                # Core (~36 reps): lighter, Zercher already loads core
+                _acc("cable_crunch", [(12, 70)] * 3, rest=60),
+            ]
+
+    # ── Anchor phases (FSL 5x5, Widowmaker) ──────────────────────────
+    # Low supplemental volume → more assistance (50-100 per category)
+    # This is where Juan can really push back work
+    if phase == "anchor":
+        if day_num == 1:  # OHP
+            return [
+                # Pull (~100 reps): face pulls + pull-ups + pull-aparts
+                _acc("face_pull", [(15, 40)] * 3, rest=60),
+                _acc("pull_up", [(10, None)] * 1, rest=90),
+                _acc("band_pull_apart", [(20, None)] * 3),
+                # Push (~50 reps): dips
+                _acc("dips", [(15, None)] * 3, rest=60),
+                # Core (~45 reps)
+                _acc("cable_crunch", [(15, 70)] * 3, rest=60),
+            ]
+        elif day_num == 2:  # Deadlift
+            return [
+                # Pull (~80 reps): pull-ups + pull-aparts + light DB rows
+                _acc("pull_up", [(10, None)] * 1, rest=90),
+                _acc("band_pull_apart", [(20, None)] * 3),
+                _acc("dumbbell_row", [(12, 20)] * 2, rest=60),
+                # Push (~40 reps): dips
+                _acc("dips", [(20, None)] * 2, rest=60),
+                # Core (~45 reps)
+                _acc("cable_crunch", [(15, 70)] * 3, rest=60),
+            ]
+        elif day_num == 3:  # Bench
+            return [
+                # Pull (~110 reps): this is the big back day
+                _acc("face_pull", [(15, 40)] * 3, rest=60),
+                _acc("pull_up", [(10, None)] * 1, rest=90),
+                _acc("pendlay_row", [(5, 80)] * 3, rest=90),
+                _acc("band_pull_apart", [(20, None)] * 3),
+                # Push: nothing extra (bench PR sets + FSL is enough)
+                # Core (~45 reps)
+                _acc("cable_crunch", [(15, 70)] * 3, rest=60),
+            ]
+        elif day_num == 4:  # Zercher Squat
+            return [
+                # Pull (~80 reps): pull-aparts + DB rows
+                _acc("band_pull_apart", [(20, None)] * 3),
+                _acc("dumbbell_row", [(15, 32)] * 3, rest=60),
+                # Push (~50 reps): dips
+                _acc("dips", [(15, None)] * 3, rest=60),
+                # SL/Core (~75 reps): step-ups + cable crunch
+                _acc("step_up", [(10, None)] * 3, rest=60),
+                _acc("cable_crunch", [(15, 70)] * 3, rest=60),
+            ]
+
+    # Fallback: return empty (shouldn't happen)
+    return []
+
+
+# Keep legacy DAY_ACCESSORIES for backwards compat (used by _get_manual_accessories
+# to know which TIDs are "managed"). We'll update the reference below.
 DAY_ACCESSORIES = {
-    1: [  # OHP day
-        {"exercise_template_id": "0B841777", "rest_seconds": 90, "sets": [
-            {"type": "normal", "weight_kg": 80, "reps": 10},
-            {"type": "normal", "weight_kg": 80, "reps": 10},
-        ]},
-        {"exercise_template_id": "875F585F", "rest_seconds": 60, "sets": [
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-        ]},
-        {"exercise_template_id": "23A48484", "rest_seconds": 60, "sets": [
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-        ]},
-    ],
-    2: [  # DL day
-        {"exercise_template_id": "0B841777", "rest_seconds": 90, "sets": [
-            {"type": "normal", "weight_kg": 80, "reps": 10},
-            {"type": "normal", "weight_kg": 80, "reps": 10},
-        ]},
-        {"exercise_template_id": "23A48484", "rest_seconds": 60, "sets": [
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-        ]},
-    ],
-    3: [  # Bench day
-        {"exercise_template_id": "0B841777", "rest_seconds": 90, "sets": [
-            {"type": "normal", "weight_kg": 80, "reps": 10},
-            {"type": "normal", "weight_kg": 80, "reps": 10},
-        ]},
-        {"exercise_template_id": "875F585F", "rest_seconds": 60, "sets": [
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-        ]},
-    ],
-    4: [  # Squat day
-        {"exercise_template_id": "23A48484", "rest_seconds": 60, "sets": [
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-            {"type": "normal", "weight_kg": 60, "reps": 10},
-        ]},
-        {"exercise_template_id": "875F585F", "rest_seconds": 60, "sets": [
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-            {"type": "normal", "weight_kg": 40, "reps": 10},
-        ]},
-    ],
+    1: [],  # Populated dynamically via get_day_accessories()
+    2: [],
+    3: [],
+    4: [],
 }
 
 # ── Strength Standards (Wendler-style, multiples of BW) ──────────────

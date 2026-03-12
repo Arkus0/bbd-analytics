@@ -29,6 +29,8 @@ from src.config_531 import (
     EXCEPTION_WORKOUT_IDS,
     DAY_ROUTINE_MAP,
     DAY_ACCESSORIES,
+    get_day_accessories,
+    _ACC_TIDS,
     round_to_plate,
     get_cycle_position,
     get_effective_tm,
@@ -1480,15 +1482,10 @@ def build_routine_exercises(day_num: int, week_type: int, macro_num: int, tm_bum
         "notes": notes,
     }]
 
-    # ── Accessories (static templates from config) ──
-    # Reduce accessories during deload/TM test
-    phase = plan_pos.get("phase", "") if plan_pos else ""
-    if phase in ("7th_week_deload", "7th_week_tm_test"):
-        # 7th Week: minimal accessories or skip entirely
-        pass
-    else:
-        accessories = DAY_ACCESSORIES.get(day_num, [])
-        exercises.extend(accessories)
+    # ── Accessories (phase-aware from config) ──
+    # get_day_accessories handles deload/TM test internally (returns minimal)
+    accessories = get_day_accessories(day_num, plan_pos)
+    exercises.extend(accessories)
 
     return exercises
 
@@ -1516,10 +1513,10 @@ def _get_manual_accessories(routine_id: str, day_num: int, main_tid: str,
     routine = r.json().get("routine", r.json())
     current_exercises = routine.get("exercises", [])
 
-    # Build set of template_ids that are "managed" (main + hardcoded accessories)
+    # Build set of template_ids that are "managed" (main + all possible accessories)
     managed_tids = {main_tid}
-    for acc in DAY_ACCESSORIES.get(day_num, []):
-        managed_tids.add(acc["exercise_template_id"])
+    # All TIDs managed by get_day_accessories (any phase)
+    managed_tids.update(_ACC_TIDS.values())
 
     manual = []
     for ex in current_exercises:
